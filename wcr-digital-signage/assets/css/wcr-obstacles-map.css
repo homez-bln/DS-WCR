@@ -1,0 +1,125 @@
+/* ═══════════════════════════════════════════════════════
+   WCR Obstacles Map CSS
+   [wcr_obstacles_map]               → Landscape 1920×1080
+   [wcr_obstacles_map mode=portrait] → Portrait  1080×1920
+═══════════════════════════════════════════════════════ */
+
+/* ── LANDSCAPE (Standard) ── */
+#wcr-obstacles-map-wrap {
+    position:   relative;
+    width:      1920px;
+    height:     1080px;
+    overflow:   hidden;
+    background: #e8e0d8;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+/* Stage wird gedreht (Map + Overlays), UI-Controls bleiben ungedreht */
+#wcr-obstacles-map-wrap .wcr-obstacles-stage {
+    position:         absolute;
+    inset:            0;
+    width:            100%;
+    height:           100%;
+    transform-origin: 50% 50%;
+    overflow:         visible; /* Leaflet-Überhang muss sichtbar sein */
+}
+
+/*
+   Leaflet-Container ÜBERDIMENSIONIERT auf Diagonal-Größe:
+   diag(1920, 1080) = diag(1080, 1920) ≈ 2204 px → 2210 px mit Sicherheitspuffer.
+   Dadurch sind die Ecken auch bei voller Rotation (45°) mit Tiles bedeckt.
+   Das Wrap übernimmt das Clipping via overflow:hidden.
+*/
+#wcr-obstacles-map-wrap #wcr-obstacles-map {
+    position: absolute;
+    width:    2210px;
+    height:   2210px;
+    left:     calc(50% - 1105px);
+    top:      calc(50% - 1105px);
+    z-index:  0;
+}
+
+/* ── PORTRAIT ── */
+#wcr-obstacles-map-wrap.portrait {
+    width:  1080px;
+    height: 1920px;
+}
+/* Portrait: gleiche Diagonal-Größe (identisch für 1080×1920) */
+#wcr-obstacles-map-wrap.portrait #wcr-obstacles-map {
+    left: calc(50% - 1105px);
+    top:  calc(50% - 1105px);
+}
+
+/* ══ Leaflet ══ */
+#wcr-obstacles-map-wrap .leaflet-container {
+    background: #e8e0d8 !important;
+}
+#wcr-obstacles-map-wrap .leaflet-tile {
+    border:  0    !important;
+    outline: none !important;
+    margin:  0    !important;
+    padding: 0    !important;
+}
+#wcr-obstacles-map-wrap .leaflet-tile-container {
+    will-change: transform;
+}
+#wcr-obstacles-map-wrap .leaflet-overlay-pane {
+    display: none !important;
+}
+#wcr-obstacles-map-wrap .leaflet-control-attribution {
+    font-size: 9px !important;
+    opacity:   0.4 !important;
+}
+#wcr-obstacles-map-wrap .leaflet-control-zoom {
+    display: none;
+}
+
+/* ── Style-Switcher ── */
+#wcr-obstacles-map-wrap .wcr-style-switcher {
+    position:        absolute;
+    top:             20px;
+    right:           20px;
+    z-index:         1000;
+    display:         flex;
+    flex-direction:  column;
+    gap:             8px;
+    pointer-events:  all;
+}
+
+/* Portrait: größere Buttons */
+#wcr-obstacles-map-wrap.portrait .wcr-style-switcher button {
+    font-size: 18px !important;
+    padding:   10px 20px !important;
+}
+
+/* ── DivIcon Obstacles ── */
+#wcr-obstacles-map-wrap .wcr-leaflet-obstacle {
+    background: none !important;
+    border:     none !important;
+    box-shadow: none !important;
+}
+
+/* ── Fallback pos-Obstacles ── */
+.wcr-obstacle {
+    position:       absolute;
+    display:        flex;
+    flex-direction: column;
+    align-items:    center;
+    gap:            4px;
+    z-index:        500;
+    pointer-events: none;
+}
+.wcr-obstacles-placeholder-hint {
+    position:       absolute;
+    bottom:         10px;
+    left:           50%;
+    transform:      translateX(-50%);
+    background:     rgba(0,0,0,.55);
+    color:          rgba(255,255,255,.6);
+    font-size:      11px;
+    padding:        4px 12px;
+    border-radius:  20px;
+    white-space:    nowrap;
+    pointer-events: none;
+    z-index:        600;
+}

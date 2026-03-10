@@ -1,0 +1,253 @@
+/*
+ * WCR Produkte Spotlight – 3-Produkt DS Card
+ * Optimiert für 16:9 (1920×1080)
+ * Features: Auto-Highlight Loop + Steam Effect auf Produkt-Bildern
+ */
+
+/* ── Wrapper ── */
+.wcr-produkte-wrap {
+    display: flex;
+    flex-direction: column;
+    width: 100vw;
+    height: 100vh;
+    max-width: var(--viewport-w, 1920px);
+    max-height: var(--viewport-h, 1080px);
+    padding: 5.5vh 5vw 6vh;
+    box-sizing: border-box;
+    gap: 4vh;
+    justify-content: center;
+    background: var(--clr-bg, #080808);
+}
+
+/* ── Header ── */
+.wcr-produkte-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5vw;
+    flex-shrink: 0;
+}
+.wcr-produkte-header-line {
+    flex: 1;
+    height: 2px;
+    background: linear-gradient(to right, transparent, var(--clr-green, #679467));
+    border-radius: 2px;
+}
+.wcr-produkte-header-line.right {
+    background: linear-gradient(to left, transparent, var(--clr-green, #679467));
+}
+.wcr-produkte-header-inner {
+    display: flex;
+    align-items: center;
+    gap: 1vw;
+    font-size: clamp(1.4rem, 2.2vw, 2.6rem);
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--clr-text, #eee);
+    white-space: nowrap;
+}
+.wcr-produkte-dot {
+    width: clamp(10px, 0.7vw, 14px);
+    height: clamp(10px, 0.7vw, 14px);
+    border-radius: 50%;
+    background: var(--clr-green, #679467);
+    box-shadow: 0 0 12px var(--clr-green, #679467);
+    flex-shrink: 0;
+}
+
+/* ── Grid ── */
+.wcr-produkte-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: clamp(24px, 2.5vw, 52px);
+    flex: 1;
+    align-items: stretch;
+    min-height: 0;
+}
+
+/* ── Card Base ── */
+.wcr-produkte-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(32px, 4vh, 64px) clamp(24px, 3vw, 56px);
+    border-radius: clamp(16px, 1.5vw, 28px);
+    background: rgba(10, 14, 24, 0.65);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    box-shadow: 0 8px 48px rgba(0, 0, 0, 0.5);
+    gap: clamp(16px, 2.2vh, 32px);
+    overflow: hidden;
+    transition:
+        box-shadow 0.6s ease,
+        border-color 0.6s ease,
+        transform 0.6s ease;
+}
+
+/* ── Auto-Highlight: JS setzt .is-active ── */
+.wcr-produkte-card.is-active {
+    border-color: var(--clr-green, #679467);
+    box-shadow:
+        0 0 0 2px var(--clr-green, #679467),
+        0 0 60px rgba(103, 148, 103, 0.35),
+        0 12px 64px rgba(0, 0, 0, 0.6);
+    transform: translateY(-6px) scale(1.018);
+    z-index: 2;
+}
+
+/* Innerer Glow-Schimmer beim Active-State */
+.wcr-produkte-card.is-active::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(ellipse at 50% 0%, rgba(103,148,103,0.12) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* Alle Inhalte über dem Pseudo-Element ── */
+.wcr-produkte-card > * {
+    position: relative;
+    z-index: 1;
+}
+
+/* ── Produkt-Bild Container ── */
+.wcr-produkte-img-wrap {
+    position: relative;
+    width: clamp(120px, 14vw, 220px);
+    height: clamp(120px, 14vw, 220px);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.wcr-produkte-img-wrap img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border-radius: 12px;
+    position: relative;
+    z-index: 2;
+    filter: drop-shadow(0 4px 16px rgba(0,0,0,0.5));
+}
+
+/* ── Steam / Dampf Partikel ── */
+.wcr-steam {
+    position: absolute;
+    bottom: 85%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 80px;
+    pointer-events: none;
+    z-index: 3;
+    overflow: visible;
+}
+
+.wcr-steam span {
+    position: absolute;
+    bottom: 0;
+    display: block;
+    width: clamp(10px, 1vw, 16px);
+    height: clamp(10px, 1vw, 16px);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.55);
+    filter: blur(5px);
+    animation: wcr-steam-rise 2.4s ease-in infinite;
+    opacity: 0;
+}
+
+/* 5 Dampf-Partikel, versetzt ── */
+.wcr-steam span:nth-child(1) { left: 22px;  animation-delay: 0s;    animation-duration: 2.2s; }
+.wcr-steam span:nth-child(2) { left: 36px;  animation-delay: 0.4s;  animation-duration: 2.6s; }
+.wcr-steam span:nth-child(3) { left: 10px;  animation-delay: 0.8s;  animation-duration: 2.0s; }
+.wcr-steam span:nth-child(4) { left: 44px;  animation-delay: 1.2s;  animation-duration: 2.8s; }
+.wcr-steam span:nth-child(5) { left: 28px;  animation-delay: 1.6s;  animation-duration: 2.4s; }
+
+@keyframes wcr-steam-rise {
+    0%   { transform: translateY(0)   translateX(0)    scale(0.5); opacity: 0; }
+    15%  { opacity: 0.7; }
+    50%  { transform: translateY(-40px) translateX(8px)  scale(1.1); opacity: 0.4; }
+    80%  { transform: translateY(-70px) translateX(-6px) scale(1.5); opacity: 0.15; }
+    100% { transform: translateY(-90px) translateX(4px)  scale(1.8); opacity: 0; }
+}
+
+/* Steam nur sichtbar wenn Card active ODER immer (je nach Wunsch) */
+/* Aktuell: immer aktiv – um es nur bei .is-active zu zeigen:
+   .wcr-produkte-card:not(.is-active) .wcr-steam span { animation-play-state: paused; opacity: 0; }
+*/
+
+/* ── Produktname ── */
+.wcr-produkte-name {
+    font-size: clamp(2rem, 3.2vw, 4rem);
+    font-weight: 800;
+    color: var(--clr-text, #eee);
+    text-align: center;
+    line-height: 1.15;
+    letter-spacing: 0.02em;
+    word-break: break-word;
+    hyphens: auto;
+    transition: color 0.4s ease;
+}
+.wcr-produkte-card.is-active .wcr-produkte-name {
+    color: #fff;
+}
+
+/* ── Trennlinie ── */
+.wcr-produkte-divider {
+    width: 55%;
+    height: 1px;
+    background: linear-gradient(to right, transparent, rgba(255,255,255,0.18), transparent);
+    border-radius: 1px;
+    flex-shrink: 0;
+    transition: background 0.4s ease;
+}
+.wcr-produkte-card.is-active .wcr-produkte-divider {
+    background: linear-gradient(to right, transparent, var(--clr-green, #679467), transparent);
+}
+
+/* ── Preis ── */
+.wcr-produkte-preis {
+    font-size: clamp(3.5rem, 7vw, 8rem);
+    font-weight: 900;
+    color: var(--clr-green, #679467);
+    text-shadow: 0 0 40px rgba(103, 148, 103, 0.45);
+    letter-spacing: 0.01em;
+    line-height: 1;
+    text-align: center;
+    white-space: nowrap;
+    transition: text-shadow 0.4s ease;
+}
+.wcr-produkte-card.is-active .wcr-produkte-preis {
+    text-shadow:
+        0 0 20px rgba(103, 148, 103, 0.9),
+        0 0 60px rgba(103, 148, 103, 0.5);
+}
+.wcr-produkte-preis .wp-currency {
+    font-size: 0.48em;
+    font-weight: 700;
+    vertical-align: super;
+    margin-left: 0.1em;
+    opacity: 0.85;
+}
+
+/* ── Menge ── */
+.wcr-produkte-menge {
+    font-size: clamp(0.9rem, 1.2vw, 1.4rem);
+    color: var(--clr-text-muted, #7a8a8a);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    text-align: center;
+}
+
+/* ── Fehler-State ── */
+.wcr-produkte-card.is-error .wcr-produkte-name {
+    color: rgba(255, 59, 48, 0.7);
+    font-size: clamp(1.2rem, 1.8vw, 2rem);
+}

@@ -1,0 +1,128 @@
+/* =============================================================
+   WCR Digital Signage — Theme: FLAT
+   Stil: Modern Flat · Keine Blur · Solide Flächen · Scharfe Kanten
+   Palette: #679467 · #019ee3 · Weiß · Schwarz · Grau
+   ============================================================= */
+
+:root {
+    --clr-green:        #679467;
+    --clr-green-dim:    rgba(103, 148, 103, 0.70);
+    --clr-green-glow:   rgba(103, 148, 103, 0.06);
+    --clr-blue:         #019ee3;
+    --clr-blue-dim:     rgba(1, 158, 227, 0.15);
+    --clr-bg:           #0a0a0a;
+    --clr-bg-dark:      #111111;
+    --clr-text:         #f0f0f0;
+    --clr-text-muted:   #6b7878;
+    --clr-border:       rgba(255, 255, 255, 0.07);
+    --blur-glass:       none;
+    --radius-card:      12px;
+    --radius-large:     16px;
+}
+
+body { background: var(--clr-bg); }
+body::before { display: none; }
+
+/* ── Flat Card: solide, kein Blur ───────────────────────────── */
+.glass, .k-card, .ds-card {
+    background: #141414;
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: var(--radius-card);
+    box-shadow: none;
+}
+/* Dünne Primärfarb-Linie oben */
+.k-card::before, .ds-card::before {
+    content: ''; position: absolute;
+    top: 0; left: 0; right: 0; height: 2px;
+    border-radius: 12px 12px 0 0;
+    background: var(--clr-green);
+    opacity: 0.55;
+}
+.k-card::after, .ds-card::after { display: none; }
+
+/* ── Header ─────────────────────────────────────────────────── */
+.ds-header { background: transparent; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.ds-header-line       { background: rgba(255,255,255,0.06) !important; }
+.ds-header-line.right { background: rgba(255,255,255,0.06) !important; }
+.ds-header-inner { color: rgba(255,255,255,0.28); font-size: 0.65rem; letter-spacing: 8px; font-weight: 500; }
+.ds-dot { background: var(--clr-green); box-shadow: none; }
+.ds-hr  { background: linear-gradient(90deg, transparent, rgba(103,148,103,0.35), transparent); }
+h3.ds-subhead {
+    color: rgba(255,255,255,0.14);
+    font-size: 0.65rem; font-weight: 700; letter-spacing: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    padding-bottom: 6px; margin: 16px 0 8px;
+}
+
+/* ── Texte ──────────────────────────────────────────────────── */
+.produkt { color: var(--clr-text); font-weight: 400; }
+.preis   { color: #ffffff; font-weight: 800; letter-spacing: -0.5px; }
+.euro    { color: rgba(255,255,255,0.22); font-size: 0.55em; }
+
+/* ── Kaffee / Starter ───────────────────────────────────────── */
+.k-img-wrap  { background: #1a1a1a; border: 1px solid rgba(255,255,255,0.06); border-radius: var(--radius-card); }
+.k-name      { color: rgba(240,240,240,0.72); font-size: 0.9rem; }
+.k-price     { color: #fff; }
+.k-price .euro { color: rgba(255,255,255,0.25); }
+
+/* ── Food Kategorie ─────────────────────────────────────────── */
+.food-kat-header  { background: #111; border-left: 3px solid var(--clr-green); border-radius: 8px; padding: 16px 28px; }
+.food-kat-name    { color: var(--clr-green); letter-spacing: 4px; }
+.food-kat-line    { background: rgba(255,255,255,0.05) !important; height: 1px; }
+.food-kat-badge   { color: #e05c5c; background: rgba(224,92,92,0.10); border-color: rgba(224,92,92,0.25); }
+
+/* ── Wetter ─────────────────────────────────────────────────── */
+.detail-card {
+    background: #141414; border: 1px solid rgba(255,255,255,0.07);
+    border-radius: var(--radius-card); backdrop-filter: none;
+}
+.dc-label  { color: rgba(255,255,255,0.32); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 2px; }
+.dc-value  { color: #fff; font-weight: 700; }
+.hero-desc { color: var(--clr-blue); }
+#forecast-grid .forecast-card { background: #111; border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; }
+.fc-day  { color: var(--clr-blue); }
+.fc-date { color: rgba(255,255,255,0.28); }
+.fc-temp { color: #fff; }
+
+/* ── Windmap ─────────────────────────────────────────────────── */
+#wcr-windmap-wrap .glass,
+#wcr-windmap-wrap #kn-box,
+#wcr-windmap-wrap #windrose-box,
+#wcr-windmap-wrap #time-card,
+#wcr-windmap-wrap #spot-header,
+#wcr-windmap-wrap #timeline {
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+    background: rgba(10,10,10,0.90); border: 1px solid rgba(255,255,255,0.07);
+}
+#wcr-windmap-wrap #kn-box                     { border-top: 2px solid var(--clr-blue); }
+#wcr-windmap-wrap #spot-header .dot           { background: var(--clr-blue); box-shadow: none; }
+#wcr-windmap-wrap #tc-forecast                { color: var(--clr-blue); }
+#wcr-windmap-wrap #tc-badge                   { background: rgba(1,158,227,0.12); border-color: rgba(1,158,227,0.28); color: var(--clr-blue); }
+#wcr-windmap-wrap #tl-fill                    { background: linear-gradient(90deg, rgba(1,158,227,0.4), var(--clr-blue)); }
+#wcr-windmap-wrap #tl-cursor                  { background: var(--clr-blue); box-shadow: none; }
+#wcr-windmap-wrap #tl-cursor::before          { background: var(--clr-blue); box-shadow: none; }
+#wcr-windmap-wrap #tl-current-time span:first-child { background: rgba(1,158,227,0.12); border-color: rgba(1,158,227,0.28); color: var(--clr-blue); }
+#wcr-windmap-wrap #wr-degs                    { color: var(--clr-blue); }
+.ds-live-dot { background: var(--clr-blue); box-shadow: none; }
+
+/* ── Öffnungszeiten Portrait ────────────────────────────────── */
+.oh-glass {
+    background: #141414;
+    border: 1px solid rgba(255,255,255,0.07);
+    backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none;
+}
+.oh-headline {
+    background: transparent;
+    backdrop-filter: none;
+    border-bottom: 2px solid var(--clr-green);
+    border-radius: 0;
+    box-shadow: none;
+    padding: 12px 0;
+}
+.oh-headline::after { display: none; }
+.col-1-day      { color: rgba(255,255,255,0.38); }
+.oh-footer-inner { color: rgba(255,255,255,0.25); }
+.oh-footer-dot  { background: var(--clr-green); box-shadow: none; }
+.oh-footer-line       { background: rgba(255,255,255,0.06) !important; }
+.oh-footer-line.right { background: rgba(255,255,255,0.06) !important; }

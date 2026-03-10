@@ -1,0 +1,252 @@
+<?php
+require_once __DIR__ . '/../inc/auth.php';
+wcr_require('view_ds');
+
+if (!defined('DSC_WP_API_BASE')) define('DSC_WP_API_BASE', 'https://wcr-webpage.de/wp-json/wakecamp/v1');
+if (!defined('DSC_WP_SECRET'))   define('DSC_WP_SECRET', 'WCR_DS_2026');
+
+$msg = '';
+$msgType = 'ok';
+
+function dsc_curl(string $url, array $payload): array {
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => http_build_query($payload),
+        CURLOPT_TIMEOUT        => 20,
+    ]);
+    $body = curl_exec($ch);
+    $err  = curl_error($ch);
+    $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    return [
+        'ok'   => ($err === '' && $code >= 200 && $code < 300),
+        'code' => $code,
+        'err'  => $err,
+        'body' => $body,
+        'json' => json_decode((string) $body, true),
+    ];
+}
+
+$optsRes = @file_get_contents(DSC_WP_API_BASE . '/ds-settings?wcr_secret=' . urlencode(DSC_WP_SECRET));
+$optsJson = json_decode((string) $optsRes, true);
+$opts = $optsJson['instagram'] ?? [];
+
+$action = $_POST['action'] ?? '';
+
+if ($action === 'ig_save_connection') {
+    $token = trim((string)($_POST['wcr_instagram_token'] ?? ''));
+    $user  = trim((string)($_POST['wcr_instagram_user_id'] ?? ''));
+
+    $payload = [
+        'wcr_secret' => DSC_WP_SECRET,
+        'action'     => 'ig_save',
+        'options'    => [
+            'wcr_instagram_user_id' => $user,
+        ],
+    ];
+
+    if ($token !== '') {
+        $payload['options']['wcr_instagram_token'] = $token;
+    }
+
+    $r = dsc_curl(DSC_WP_API_BASE . '/ds-settings', $payload);
+    if ($r['ok'] && !empty($r['json']['ok'])) {
+        $msg = '🔐 Instagram-Verbindung gespeichert';
+        $msgType = 'ok';
+    } else {
+        $msg = 'Fehler beim Speichern der Verbindung';
+        $msgType = 'error';
+    }
+}
+
+if ($action === 'ig_save_settings') {
+    $fields = [
+        'wcr_instagram_hashtags'       => 'strval',
+        'wcr_instagram_excluded'       => 'strval',
+        'wcr_instagram_location_label' => 'strval',
+        'wcr_instagram_cta_text'       => 'strval',
+        'wcr_instagram_qr_url'         => 'strval',
+        'wcr_instagram_max_age_value'  => 'intval',
+        'wcr_instagram_max_age_unit'   => 'strval',
+        'wcr_instagram_max_posts'      => 'intval',
+        'wcr_instagram_refresh'        => 'intval',
+        'wcr_instagram_new_hours'      => 'intval',
+        'wcr_instagram_video_pool'     => 'intval',
+        'wcr_instagram_video_count'    => 'intval',
+        'wcr_instagram_min_likes'      => 'intval',
+    ];
+    $toggles = [
+        'wcr_instagram_use_tagged',
+        'wcr_instagram_use_hashtag',
+        'wcr_instagram_show_user',
+        'wcr_instagram_cta_active',
+        'wcr_instagram_qr_active',
+        'wcr_instagram_weekly_best',
+    ];
+
+    $payload = [
+        'wcr_secret' => DSC_WP_SECRET,
+        'action'     => 'ig_save',
+        'options'    => [],
+    ];
+
+    foreach ($fields as $key => $fn) {
+        if (isset($_POST[$key])) {
+            $payload['options'][$key] = $fn($_POST[$key]);
+        }
+    }
+    foreach ($toggles as $t) {
+        $payload['options'][$t] = isset($_POST[$t]) ? 1 : 0;
+    }
+
+    $r = dsc_curl(DSC_WP_API_BASE . '/ds-settings', $payload);
+    if ($r['ok'] && !empty($r['json']['ok'])) {
+        $msg = '📸 Instagram-Einstellungen gespeichert';
+        $msgType = 'ok';
+    } else {
+        $msg = 'Fehler beim Speichern der Einstellungen';
+        $msgType = 'error';
+    }
+}
+
+$optsRes = @file_get_contents(DSC_WP_API_BASE . '/ds-settings?wcr_secret=' . urlencode(DSC_WP_SECRET));
+$optsJson = json_decode((string) $optsRes, true);
+$opts = $optsJson['instagram'] ?? [];
+
+$debugRes = @file_get_contents(DSC_WP_API_BASE . '/instagram-debug');
+$debug = json_decode((string) $debugRes, true) ?: [];
+?>
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>DS Settings</title>
+<style>
+body{font-family:Arial,sans-serif;background:#111;color:#eee;margin:0;padding:24px}
+.wrap{max-width:1100px;margin:0 auto}
+.card{background:#1b1b1b;border:1px solid #333;border-radius:12px;padding:18px;margin:0 0 18px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+label{display:block;margin:12px 0 6px}
+input[type=text],input[type=password],input[type=number],textarea,select{width:100%;padding:10px;border-radius:8px;border:1px solid #444;background:#0f0f0f;color:#fff}
+textarea{min-height:90px}
+button{padding:12px 16px;border:0;border-radius:10px;background:#00B9E4;color:#000;font-weight:700;cursor:pointer}
+.msg.ok{background:#13351f;color:#8ff0a4;padding:12px;border-radius:10px;margin:0 0 18px}
+.msg.error{background:#3a1717;color:#ff9b9b;padding:12px;border-radius:10px;margin:0 0 18px}
+.inline{display:flex;gap:12px;align-items:center}
+small{color:#aaa}
+pre{background:#0d0d0d;border:1px solid #333;padding:12px;border-radius:10px;overflow:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+    <h1>Digital Signage – Instagram</h1>
+
+    <?php if ($msg): ?>
+        <div class="msg <?= $msgType === 'ok' ? 'ok' : 'error' ?>"><?= htmlspecialchars($msg) ?></div>
+    <?php endif; ?>
+
+    <div class="grid">
+        <div class="card">
+            <h2>🔐 Verbindung</h2>
+            <form method="post">
+                <input type="hidden" name="action" value="ig_save_connection">
+
+                <label>Access Token</label>
+                <input type="password" name="wcr_instagram_token" placeholder="Neuen Token eingeben">
+
+                <label>Instagram User ID</label>
+                <input type="text" name="wcr_instagram_user_id" value="<?= htmlspecialchars((string)($opts['wcr_instagram_user_id'] ?? '')) ?>">
+
+                <p><small>Token bleibt unverändert, wenn das Feld leer bleibt.</small></p>
+                <button>🔐 Verbindung speichern</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>🧪 Debug</h2>
+            <pre><?= htmlspecialchars(json_encode($debug, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)) ?></pre>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>📸 Feed-Einstellungen</h2>
+        <form method="post">
+            <input type="hidden" name="action" value="ig_save_settings">
+
+            <div class="grid">
+                <div>
+                    <label>Hashtags</label>
+                    <textarea name="wcr_instagram_hashtags"><?= htmlspecialchars((string)($opts['wcr_instagram_hashtags'] ?? '')) ?></textarea>
+
+                    <label>Ausgeschlossene Accounts</label>
+                    <textarea name="wcr_instagram_excluded"><?= htmlspecialchars((string)($opts['wcr_instagram_excluded'] ?? '')) ?></textarea>
+
+                    <label>Standort-Label</label>
+                    <input type="text" name="wcr_instagram_location_label" value="<?= htmlspecialchars((string)($opts['wcr_instagram_location_label'] ?? '')) ?>">
+
+                    <label>CTA-Text</label>
+                    <input type="text" name="wcr_instagram_cta_text" value="<?= htmlspecialchars((string)($opts['wcr_instagram_cta_text'] ?? '')) ?>">
+
+                    <label>QR URL</label>
+                    <input type="text" name="wcr_instagram_qr_url" value="<?= htmlspecialchars((string)($opts['wcr_instagram_qr_url'] ?? '')) ?>">
+                </div>
+
+                <div>
+                    <label>Max. Post-Alter</label>
+                    <div class="inline">
+                        <input type="number" name="wcr_instagram_max_age_value" value="<?= (int)($opts['wcr_instagram_max_age_value'] ?? 30) ?>">
+                        <select name="wcr_instagram_max_age_unit">
+                            <?php $unit = (string)($opts['wcr_instagram_max_age_unit'] ?? 'days'); ?>
+                            <option value="days" <?= $unit === 'days' ? 'selected' : '' ?>>Tage</option>
+                            <option value="weeks" <?= $unit === 'weeks' ? 'selected' : '' ?>>Wochen</option>
+                            <option value="months" <?= $unit === 'months' ? 'selected' : '' ?>>Monate</option>
+                        </select>
+                    </div>
+
+                    <label>Max. Posts</label>
+                    <input type="number" name="wcr_instagram_max_posts" value="<?= (int)($opts['wcr_instagram_max_posts'] ?? 8) ?>">
+
+                    <label>Refresh (Minuten)</label>
+                    <input type="number" name="wcr_instagram_refresh" value="<?= (int)($opts['wcr_instagram_refresh'] ?? 10) ?>">
+
+                    <label>Neu-Badge (Stunden)</label>
+                    <input type="number" name="wcr_instagram_new_hours" value="<?= (int)($opts['wcr_instagram_new_hours'] ?? 2) ?>">
+
+                    <label>Video-Pool</label>
+                    <input type="number" name="wcr_instagram_video_pool" value="<?= (int)($opts['wcr_instagram_video_pool'] ?? 10) ?>">
+
+                    <label>Clips pro Session</label>
+                    <input type="number" name="wcr_instagram_video_count" value="<?= (int)($opts['wcr_instagram_video_count'] ?? 3) ?>">
+
+                    <label>Mindest-Likes</label>
+                    <input type="number" name="wcr_instagram_min_likes" value="<?= (int)($opts['wcr_instagram_min_likes'] ?? 0) ?>">
+                </div>
+            </div>
+
+            <div class="grid" style="margin-top:18px">
+                <?php
+                $checks = [
+                    'wcr_instagram_use_tagged' => 'Tags + Mentions verwenden',
+                    'wcr_instagram_use_hashtag' => 'Hashtag-Feed verwenden',
+                    'wcr_instagram_show_user' => 'Username anzeigen',
+                    'wcr_instagram_cta_active' => 'CTA anzeigen',
+                    'wcr_instagram_qr_active' => 'QR-Code anzeigen',
+                    'wcr_instagram_weekly_best' => 'Post der Woche',
+                ];
+                foreach ($checks as $key => $label):
+                ?>
+                <label><input type="checkbox" name="<?= $key ?>" <?= !empty($opts[$key]) ? 'checked' : '' ?>> <?= htmlspecialchars($label) ?></label>
+                <?php endforeach; ?>
+            </div>
+
+            <div style="margin-top:18px">
+                <button>📸 Feed-Einstellungen speichern</button>
+            </div>
+        </form>
+    </div>
+</div>
+</body>
+</html>

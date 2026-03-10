@@ -1,0 +1,225 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+ * WCR DS – KOMPONENTEN-BIBLIOTHEK
+ * ───────────────────────────────────────────────────────────────────────────
+ * Wiederverwendbare UI-Komponenten für einheitliches Design
+ * Nutzt CSS-Variablen aus wcr-ds-global.css
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ═══ BUTTONS ═══ */
+.ds-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap-sm);
+  padding: 12px 24px;
+  border: none;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-main);
+  font-size: 1rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all var(--timing-base) ease;
+  white-space: nowrap;
+}
+.ds-btn-primary {
+  background: var(--clr-green);
+  color: var(--clr-bg);
+  box-shadow: 0 0 20px var(--clr-green-glow);
+}
+.ds-btn-primary:hover {
+  background: var(--clr-green-dim);
+  transform: translateY(-2px);
+  box-shadow: 0 0 30px var(--clr-green-dim);
+}
+.ds-btn-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--clr-text);
+  border: 1px solid var(--clr-border);
+}
+.ds-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: var(--clr-green);
+}
+.ds-btn-ghost {
+  background: transparent;
+  color: var(--clr-green);
+  border: 1px solid var(--clr-green);
+}
+.ds-btn-ghost:hover {
+  background: var(--clr-green-glow);
+}
+
+/* ═══ BADGES ═══ */
+.ds-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.ds-badge-success {
+  background: var(--clr-green-glow);
+  color: var(--clr-green);
+  border: 1px solid var(--clr-green-dim);
+}
+.ds-badge-info {
+  background: var(--clr-blue-dim);
+  color: var(--clr-blue);
+  border: 1px solid var(--clr-blue-dim);
+}
+.ds-badge-neutral {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--clr-text-muted);
+  border: 1px solid var(--clr-border);
+}
+
+/* ═══ CARDS (neue einheitliche Version) ═══ */
+.ds-card-modern {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: var(--blur-glass);
+  -webkit-backdrop-filter: var(--blur-glass);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-lg);
+  padding: var(--gap-lg);
+  position: relative;
+  overflow: hidden;
+  transition: transform var(--timing-base), box-shadow var(--timing-base);
+}
+.ds-card-modern:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--clr-green-dim);
+}
+.ds-card-modern::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--clr-green), transparent);
+  opacity: 0;
+  transition: opacity var(--timing-base);
+}
+.ds-card-modern:hover::before {
+  opacity: 1;
+}
+
+/* ═══ TICKER / MARQUEE ═══ */
+.ds-ticker {
+  width: 100%;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.02);
+  border-top: 1px solid var(--clr-border);
+  border-bottom: 1px solid var(--clr-border);
+  padding: var(--gap-sm) 0;
+}
+.ds-ticker-content {
+  display: flex;
+  gap: var(--gap-xl);
+  animation: ticker 30s linear infinite;
+}
+@keyframes ticker {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.ds-ticker-item {
+  white-space: nowrap;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--clr-text-muted);
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+}
+.ds-ticker-item::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: var(--clr-green);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--clr-green);
+}
+
+/* ═══ PROGRESS BAR ═══ */
+.ds-progress {
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  position: relative;
+}
+.ds-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--clr-green), var(--clr-green-dim));
+  border-radius: var(--radius-pill);
+  transition: width var(--timing-slow) ease;
+  box-shadow: 0 0 10px var(--clr-green-glow);
+}
+
+/* ═══ DIVIDER ═══ */
+.ds-divider {
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--clr-border), transparent);
+  margin: var(--gap-lg) 0;
+}
+.ds-divider-accent {
+  background: linear-gradient(90deg, transparent, var(--clr-green-dim), transparent);
+}
+
+/* ═══ TOOLTIP ═══ */
+.ds-tooltip {
+  position: relative;
+  display: inline-block;
+}
+.ds-tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-8px);
+  background: var(--clr-bg-dark);
+  color: var(--clr-text);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--timing-base), transform var(--timing-base);
+  border: 1px solid var(--clr-border);
+}
+.ds-tooltip:hover::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-4px);
+}
+
+/* ═══ GRID SYSTEM (responsive helper) ═══ */
+.ds-auto-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--gap-lg);
+}
+
+/* ═══ SCROLLBAR (custom) ═══ */
+.ds-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.ds-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-sm);
+}
+.ds-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--clr-green-dim);
+  border-radius: var(--radius-sm);
+}
+.ds-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--clr-green);
+}

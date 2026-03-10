@@ -1,0 +1,483 @@
+<?php
+if (!defined('ABSPATH')) exit;
+
+final class WCR_Instagram {
+    public const OPT_TOKEN      = 'wcr_instagram_token';
+    public const OPT_USER_ID    = 'wcr_instagram_user_id';
+    public const CACHE_KEY      = 'wcr_instagram_cache';
+    public const CACHE_ERROR    = 'wcr_instagram_last_error';
+    public const CRON_HOOK      = 'wcr_instagram_refresh_cache';
+    public const REFRESH_HOOK   = 'wcr_instagram_refresh_token';
+
+    public static function init(): void {
+        add_filter('cron_schedules', [__CLASS__, 'cron_schedules']);
+
+        add_action('init', [__CLASS__, 'maybe_reschedule_events']);
+        add_action(self::CRON_HOOK, [__CLASS__, 'refresh_cache']);
+        add_action(self::REFRESH_HOOK, [__CLASS__, 'refresh_token']);
+    }
+
+    public static function cron_schedules(array $schedules): array {
+        $schedules['wcr_instagram_5m']  = ['interval' => 5 * MINUTE_IN_SECONDS,  'display' => 'Alle 5 Min'];
+        $schedules['wcr_instagram_10m'] = ['interval' => 10 * MINUTE_IN_SECONDS, 'display' => 'Alle 10 Min'];
+        $schedules['wcr_instagram_15m'] = ['interval' => 15 * MINUTE_IN_SECONDS, 'display' => 'Alle 15 Min'];
+        $schedules['wcr_instagram_30m'] = ['interval' => 30 * MINUTE_IN_SECONDS, 'display' => 'Alle 30 Min'];
+        $schedules['wcr_instagram_60m'] = ['interval' => 60 * MINUTE_IN_SECONDS, 'display' => 'Alle 60 Min'];
+        $schedules['every_50_days']     = ['interval' => 50 * DAY_IN_SECONDS, 'display' => 'Alle 50 Tage'];
+        return $schedules;
+    }
+
+    private static function refresh_schedule_key(): string {
+        $refresh = (int) get_option('wcr_instagram_refresh', 10);
+        $map = [
+            5  => 'wcr_instagram_5m',
+            10 => 'wcr_instagram_10m',
+            15 => 'wcr_instagram_15m',
+            30 => 'wcr_instagram_30m',
+            60 => 'wcr_instagram_60m',
+        ];
+        return $map[$refresh] ?? 'wcr_instagram_10m';
+    }
+
+    private static function cache_ttl(): int {
+        $refresh = (int) get_option('wcr_instagram_refresh', 10);
+        $refresh = max(1, $refresh);
+        return $refresh * MINUTE_IN_SECONDS;
+    }
+
+    public static function maybe_reschedule_events(): void {
+        $cacheSchedule = self::refresh_schedule_key();
+
+        $nextCache = wp_next_scheduled(self::CRON_HOOK);
+        if (!$nextCache) {
+            wp_schedule_event(time() + 30, $cacheSchedule, self::CRON_HOOK);
+        } else {
+            $current = wp_get_schedule(self::CRON_HOOK);
+            if ($current !== $cacheSchedule) {
+                wp_clear_scheduled_hook(self::CRON_HOOK);
+                wp_schedule_event(time() + 30, $cacheSchedule, self::CRON_HOOK);
+            }
+        }
+
+        if (!wp_next_scheduled(self::REFRESH_HOOK)) {
+            wp_schedule_event(time() + HOUR_IN_SECONDS, 'every_50_days', self::REFRESH_HOOK);
+        }
+    }
+
+    public static function refresh_token(): void {
+        $token = trim((string) get_option(self::OPT_TOKEN));
+        if ($token === '') {
+            return;
+        }
+
+        $res = wp_remote_get(
+            'https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=' . rawurlencode($token),
+            ['timeout' => 20]
+        );
+        if (is_wp_error($res)) {
+            self::set_last_error('Token-Refresh fehlgeschlagen: ' . $res->get_error_message());
+            return;
+        }
+
+        $code = (int) wp_remote_retrieve_response_code($res);
+        $json = json_decode((string) wp_remote_retrieve_body($res), true);
+
+        if ($code >= 200 && $code < 300 && !empty($json['access_token'])) {
+            update_option(self::OPT_TOKEN, (string) $json['access_token']);
+            self::clear_last_error();
+            return;
+        }
+
+        self::set_last_error('Token-Refresh fehlgeschlagen (HTTP ' . $code . ')');
+    }
+
+    private static function set_last_error(string $message): void {
+        update_option(self::CACHE_ERROR, $message, false);
+    }
+
+    private static function clear_last_error(): void {
+        delete_option(self::CACHE_ERROR);
+    }
+
+    private static function get_last_error(): string {
+        return (string) get_option(self::CACHE_ERROR, '');
+    }
+
+    private static function api_get(string $url, array $args = []): array {
+        $res = wp_remote_get($url, array_merge(['timeout' => 20], $args));
+        if (is_wp_error($res)) {
+            self::set_last_error('HTTP-Fehler: ' . $res->get_error_message());
+            return [];
+        }
+
+        $code = (int) wp_remote_retrieve_response_code($res);
+        $body = (string) wp_remote_retrieve_body($res);
+        $json = json_decode($body, true);
+
+        if ($code < 200 || $code >= 300) {
+            $msg = '';
+            if (is_array($json) && !empty($json['error']['message'])) {
+                $msg = (string) $json['error']['message'];
+            }
+            self::set_last_error('Instagram API Fehler (HTTP ' . $code . ')' . ($msg ? ': ' . $msg : ''));
+            return [];
+        }
+
+        if (!is_array($json)) {
+            self::set_last_error('Instagram API lieferte kein gültiges JSON.');
+            return [];
+        }
+
+        if (!empty($json['error']['message'])) {
+            self::set_last_error('Instagram API Fehler: ' . (string) $json['error']['message']);
+            return [];
+        }
+
+        self::clear_last_error();
+        return $json;
+    }
+
+    private static function token(): string {
+        return trim((string) get_option(self::OPT_TOKEN));
+    }
+
+    private static function user_id(): string {
+        return trim((string) get_option(self::OPT_USER_ID));
+    }
+
+    private static function own_fields(): string {
+        return implode(',', [
+            'id',
+            'caption',
+            'media_type',
+            'media_url',
+            'thumbnail_url',
+            'permalink',
+            'timestamp',
+            'username',
+            'children{media_type,media_url,thumbnail_url}',
+        ]);
+    }
+
+    private static function tagged_fields(): string {
+        return implode(',', [
+            'id',
+            'caption',
+            'media_type',
+            'media_url',
+            'thumbnail_url',
+            'permalink',
+            'timestamp',
+            'username',
+            'like_count',
+        ]);
+    }
+
+    private static function hashtag_fields(): string {
+        return implode(',', [
+            'id',
+            'caption',
+            'media_type',
+            'media_url',
+            'thumbnail_url',
+            'permalink',
+            'timestamp',
+            'username',
+            'like_count',
+        ]);
+    }
+
+    private static function fetch_own_media(): array {
+        $token = self::token();
+        if ($token === '') {
+            self::set_last_error('Instagram Token fehlt.');
+            return [];
+        }
+
+        $limit = max(1, min(50, (int) get_option('wcr_instagram_max_posts', 8) * 3));
+        $url = 'https://graph.instagram.com/me/media?fields=' .
+            rawurlencode(self::own_fields()) .
+            '&limit=' . $limit .
+            '&access_token=' . rawurlencode($token);
+
+        $data = self::api_get($url);
+        $posts = $data['data'] ?? [];
+
+        foreach ($posts as &$p) {
+            if (empty($p['username'])) {
+                $p['username'] = '';
+            }
+            $p['source'] = 'own';
+            $p['like_count'] = $p['like_count'] ?? 0;
+        }
+        unset($p);
+
+        return is_array($posts) ? $posts : [];
+    }
+
+    public static function fetch_tagged(): array {
+        if (!(bool) get_option('wcr_instagram_use_tagged', 1)) {
+            return [];
+        }
+
+        $token = self::token();
+        $uid   = self::user_id();
+        if ($token === '' || $uid === '') {
+            return [];
+        }
+
+        $url = 'https://graph.facebook.com/v19.0/' . rawurlencode($uid) .
+            '/tags?fields=' . rawurlencode(self::tagged_fields()) .
+            '&limit=30&access_token=' . rawurlencode($token);
+
+        $data = self::api_get($url);
+        $posts = $data['data'] ?? [];
+        foreach ($posts as &$p) {
+            $p['source'] = 'tagged';
+            $p['username'] = $p['username'] ?? '';
+            $p['like_count'] = $p['like_count'] ?? 0;
+        }
+        unset($p);
+        return is_array($posts) ? $posts : [];
+    }
+
+    public static function fetch_hashtag(): array {
+        if (!(bool) get_option('wcr_instagram_use_hashtag', 1)) {
+            return [];
+        }
+
+        $token = self::token();
+        $uid   = self::user_id();
+        $raw   = (string) get_option('wcr_instagram_hashtags', 'wakecampruhlsdorf');
+        $hashtags = array_values(array_filter(array_map(static function ($tag) {
+            $tag = trim((string) $tag);
+            return $tag !== '' ? ltrim($tag, '#') : '';
+        }, preg_split('/\r\n|\r|\n/', $raw) ?: [])));
+
+        if ($token === '' || $uid === '' || !$hashtags) {
+            return [];
+        }
+
+        $all = [];
+        foreach ($hashtags as $hashtag) {
+            $searchUrl = 'https://graph.facebook.com/v19.0/ig_hashtag_search?user_id=' .
+                rawurlencode($uid) .
+                '&q=' . rawurlencode($hashtag) .
+                '&access_token=' . rawurlencode($token);
+
+            $search = self::api_get($searchUrl);
+            $hid = $search['data'][0]['id'] ?? '';
+            if (!$hid) {
+                continue;
+            }
+
+            $feedUrl = 'https://graph.facebook.com/v19.0/' . rawurlencode((string) $hid) .
+                '/recent_media?user_id=' . rawurlencode($uid) .
+                '&fields=' . rawurlencode(self::hashtag_fields()) .
+                '&limit=20&access_token=' . rawurlencode($token);
+
+            $data = self::api_get($feedUrl);
+            $posts = $data['data'] ?? [];
+            if (!is_array($posts)) {
+                continue;
+            }
+
+            foreach ($posts as &$p) {
+                $p['source'] = 'hashtag';
+                $p['hashtag'] = $hashtag;
+                $p['username'] = $p['username'] ?? '';
+                $p['like_count'] = $p['like_count'] ?? 0;
+            }
+            unset($p);
+
+            $all = array_merge($all, $posts);
+        }
+
+        return $all;
+    }
+
+    private static function parse_cutoff(): ?int {
+        $ageVal = (int) get_option('wcr_instagram_max_age_value', 30);
+        if ($ageVal <= 0) {
+            return null;
+        }
+
+        $ageUnit = (string) get_option('wcr_instagram_max_age_unit', 'days');
+        $map = ['days' => 'days', 'weeks' => 'weeks', 'months' => 'months'];
+        $unit = $map[$ageUnit] ?? 'days';
+
+        return strtotime('-' . $ageVal . ' ' . $unit);
+    }
+
+    private static function excluded_usernames(): array {
+        $raw = (string) get_option('wcr_instagram_excluded', '');
+        $items = preg_split('/\r\n|\r|\n/', $raw) ?: [];
+        $items = array_map(static fn($u) => ltrim(trim((string) $u), '@'), $items);
+        $items = array_values(array_filter($items, static fn($u) => $u !== ''));
+        return array_map('strtolower', $items);
+    }
+
+    private static function normalize_post(array $post): ?array {
+        $id = (string) ($post['id'] ?? '');
+        $mediaType = strtoupper((string) ($post['media_type'] ?? ''));
+        $timestamp = (string) ($post['timestamp'] ?? '');
+        $permalink = (string) ($post['permalink'] ?? '');
+
+        if ($id === '' || $mediaType === '' || $timestamp === '') {
+            return null;
+        }
+
+        $mediaUrl = (string) ($post['media_url'] ?? '');
+        $thumbUrl = (string) ($post['thumbnail_url'] ?? '');
+
+        if ($mediaType === 'VIDEO' && $thumbUrl === '' && !empty($post['media_url'])) {
+            $thumbUrl = (string) $post['media_url'];
+        }
+
+        if ($mediaType === 'CAROUSEL_ALBUM' && $mediaUrl === '' && !empty($post['children']['data'][0]['media_url'])) {
+            $mediaUrl = (string) $post['children']['data'][0]['media_url'];
+        }
+
+        return [
+            'id'            => $id,
+            'caption'       => (string) ($post['caption'] ?? ''),
+            'media_type'    => $mediaType,
+            'media_url'     => $mediaUrl,
+            'thumbnail_url' => $thumbUrl,
+            'permalink'     => $permalink,
+            'timestamp'     => $timestamp,
+            'username'      => (string) ($post['username'] ?? ''),
+            'like_count'    => (int) ($post['like_count'] ?? 0),
+            'source'        => (string) ($post['source'] ?? 'own'),
+            'hashtag'       => (string) ($post['hashtag'] ?? ''),
+        ];
+    }
+
+    private static function filter_posts(array $posts): array {
+        $cutoff = self::parse_cutoff();
+        $minLikes = (int) get_option('wcr_instagram_min_likes', 0);
+        $excluded = self::excluded_usernames();
+
+        $filtered = [];
+        foreach ($posts as $p) {
+            $post = self::normalize_post($p);
+            if (!$post) {
+                continue;
+            }
+
+            if ($cutoff && strtotime($post['timestamp']) < $cutoff) {
+                continue;
+            }
+
+            if ($minLikes > 0 && $post['like_count'] < $minLikes) {
+                continue;
+            }
+
+            if ($excluded) {
+                $user = strtolower($post['username']);
+                if ($user !== '' && in_array($user, $excluded, true)) {
+                    continue;
+                }
+            }
+
+            $filtered[$post['id']] = $post;
+        }
+
+        $filtered = array_values($filtered);
+        usort($filtered, static fn($a, $b) => strtotime($b['timestamp']) <=> strtotime($a['timestamp']));
+        return $filtered;
+    }
+
+    public static function refresh_cache(): array {
+        $all = [];
+
+        // Nur Kunden-Content: Tagged und Hashtag
+        $tagged = self::fetch_tagged();
+        if ($tagged) {
+            $all = array_merge($all, $tagged);
+        }
+
+        $hashtag = self::fetch_hashtag();
+        if ($hashtag) {
+            $all = array_merge($all, $hashtag);
+        }
+
+        $filtered = self::filter_posts($all);
+
+        $max = max(1, (int) get_option('wcr_instagram_max_posts', 8));
+        $result = array_slice($filtered, 0, $max);
+
+        set_transient(self::CACHE_KEY, $result, self::cache_ttl());
+
+        if ($result) {
+            self::clear_last_error();
+        } elseif (!$all) {
+            $err = self::get_last_error();
+            if ($err === '') {
+                self::set_last_error('Es wurden keine Instagram-Beiträge gefunden.');
+            }
+        }
+
+        return $result;
+    }
+
+    public static function get_posts(): array {
+        $cached = get_transient(self::CACHE_KEY);
+        if (is_array($cached)) {
+            return $cached;
+        }
+        return self::refresh_cache();
+    }
+
+    public static function get_videos(): array {
+        $pool  = max(1, (int) get_option('wcr_instagram_video_pool', 10));
+        $count = max(1, (int) get_option('wcr_instagram_video_count', 3));
+
+        // Für Videos bewusst den vollen gefilterten Feed nutzen, nicht nur das sichtbare Grid.
+        $all = self::filter_posts(array_merge(self::fetch_tagged(), self::fetch_hashtag()));
+        $videos = array_values(array_filter($all, static function ($p) {
+            return strtoupper((string) ($p['media_type'] ?? '')) === 'VIDEO';
+        }));
+
+        $poolVideos = array_slice($videos, 0, $pool);
+        if (!$poolVideos) {
+            return [];
+        }
+
+        if (count($poolVideos) <= $count) {
+            return array_values($poolVideos);
+        }
+
+        $rand = array_rand($poolVideos, min($count, count($poolVideos)));
+        $keys = is_array($rand) ? $rand : [$rand];
+        return array_values(array_map(static fn($k) => $poolVideos[$k], $keys));
+    }
+
+    public static function get_weekly_best(): ?array {
+        if (!(bool) get_option('wcr_instagram_weekly_best', 1)) {
+            return null;
+        }
+
+        $cutoff = strtotime('-7 days');
+        $posts = self::filter_posts(array_merge(self::fetch_tagged(), self::fetch_hashtag()));
+        $week = array_values(array_filter($posts, static fn($p) => strtotime((string) $p['timestamp']) >= $cutoff));
+
+        if (!$week) {
+            return null;
+        }
+
+        usort($week, static fn($a, $b) => ((int) $b['like_count']) <=> ((int) $a['like_count']));
+        return $week[0] ?? null;
+    }
+
+    public static function rest_debug_info(): array {
+        return [
+            'connected'  => self::token() !== '',
+            'user_id'    => self::user_id(),
+            'last_error' => self::get_last_error(),
+            'count'      => count(self::get_posts()),
+        ];
+    }
+}
+
+WCR_Instagram::init();

@@ -1,0 +1,189 @@
+/* =============================================================
+   WCR Digital Signage — Theme: AURORA
+   Stil: Deep Dark · Gradient-Mesh · Leuchtende Farb-Borders
+         Kein Blur — Tiefe durch Farbe und Kontrast
+   Palette: #679467 · #019ee3 · Weiß · Schwarz · Grau
+   ============================================================= */
+
+:root {
+    --clr-green:        #679467;
+    --clr-green-dim:    rgba(103, 148, 103, 0.65);
+    --clr-green-glow:   rgba(103, 148, 103, 0.10);
+    --clr-blue:         #019ee3;
+    --clr-blue-dim:     rgba(1, 158, 227, 0.18);
+    --clr-bg:           #06080e;
+    --clr-bg-dark:      #0b0d16;
+    --clr-text:         #e2e8f0;
+    --clr-text-muted:   #627080;
+    --clr-border:       rgba(255, 255, 255, 0.06);
+    --blur-glass:       none;
+    --radius-card:      16px;
+    --radius-large:     22px;
+}
+
+/* ── Body: Gradient-Mesh mit Markenfarben ───────────────────── */
+body { background: var(--clr-bg); }
+body::before {
+    background:
+        radial-gradient(ellipse 55% 55% at  5%  10%, rgba(1,158,227,0.15)   0%, transparent 60%),
+        radial-gradient(ellipse 45% 45% at 95%  88%, rgba(103,148,103,0.13) 0%, transparent 55%),
+        radial-gradient(ellipse 35% 35% at 50%  50%, rgba(1,158,227,0.06)   0%, transparent 65%),
+        radial-gradient(ellipse 25% 25% at 78%  12%, rgba(103,148,103,0.10) 0%, transparent 50%);
+    animation: aurora-shift 20s ease-in-out infinite alternate;
+}
+@keyframes aurora-shift {
+    0%   { opacity: 1;   transform: scale(1)    rotate(0deg); }
+    50%  { opacity: 0.9; transform: scale(1.03) rotate(0.6deg); }
+    100% { opacity: 1;   transform: scale(1)    rotate(0deg); }
+}
+
+/* ── Aurora Card ────────────────────────────────────────────── */
+.glass, .k-card, .ds-card {
+    background: rgba(11, 14, 22, 0.88);
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: var(--radius-card);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.03), 0 4px 24px rgba(0,0,0,0.45);
+    position: relative;
+}
+
+/* Jede Karte alterniert zwischen Primär- und Sekundärfarbe */
+.k-card::before, .ds-card::before {
+    content: ''; position: absolute;
+    top: 0; left: 0; right: 0; height: 2px;
+    border-radius: 16px 16px 0 0;
+    background: linear-gradient(90deg, var(--clr-green), var(--clr-blue));
+}
+.k-card:nth-child(even)::before {
+    background: linear-gradient(90deg, var(--clr-blue), var(--clr-green));
+}
+.k-card:nth-child(3n)::before {
+    background: var(--clr-green);
+}
+.k-card:nth-child(4n)::before {
+    background: var(--clr-blue);
+}
+.k-card::after, .ds-card::after { display: none; }
+
+/* ── Header ─────────────────────────────────────────────────── */
+.ds-header { background: transparent; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.ds-header-line       { background: linear-gradient(90deg, transparent, rgba(1,158,227,0.35)) !important; }
+.ds-header-line.right { background: linear-gradient(90deg, rgba(1,158,227,0.35), transparent) !important; }
+.ds-header-inner { color: var(--clr-blue); font-size: 0.62rem; letter-spacing: 7px; font-weight: 600; }
+.ds-dot {
+    background: var(--clr-blue);
+    box-shadow: 0 0 10px var(--clr-blue), 0 0 24px rgba(1,158,227,0.4);
+    animation: aurora-dot-pulse 2.5s ease-in-out infinite;
+}
+@keyframes aurora-dot-pulse {
+    0%, 100% { box-shadow: 0 0 8px  var(--clr-green), 0 0 20px rgba(103,148,103,0.35); background: var(--clr-green); }
+    50%       { box-shadow: 0 0 14px var(--clr-blue),  0 0 32px rgba(1,158,227,0.45);   background: var(--clr-blue); }
+}
+.ds-hr { background: linear-gradient(90deg, transparent, var(--clr-green), var(--clr-blue), transparent); }
+h3.ds-subhead {
+    color: var(--clr-blue);
+    font-size: 0.6rem; font-weight: 700; letter-spacing: 10px;
+    text-transform: uppercase;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(1,158,227,0.18);
+    margin-bottom: 10px;
+}
+
+/* ── Texte ──────────────────────────────────────────────────── */
+.produkt { color: var(--clr-text); }
+.preis   { color: #ffffff; font-weight: 800; letter-spacing: -1px; }
+.euro    { color: rgba(255,255,255,0.25); font-size: 0.55em; }
+
+/* ── Kaffee / Starter ───────────────────────────────────────── */
+.k-img-wrap  { background: rgba(1,158,227,0.07); border: 1px solid rgba(1,158,227,0.22); }
+.k-name      { color: rgba(226,232,240,0.82); }
+.k-price     { color: #fff; }
+.k-price .euro { color: rgba(255,255,255,0.25); }
+
+/* ── Food Kategorie ─────────────────────────────────────────── */
+.food-kat-header {
+    background: rgba(1,158,227,0.05);
+    border-left: 3px solid var(--clr-blue);
+    border-radius: 0 12px 12px 0;
+    padding: 18px 32px;
+}
+.food-kat-name  { color: var(--clr-text); letter-spacing: 5px; }
+.food-kat-line  { background: linear-gradient(90deg, rgba(1,158,227,0.28), transparent) !important; }
+.food-kat-badge { color: #e05c5c; background: rgba(224,92,92,0.10); border-color: rgba(224,92,92,0.28); }
+
+/* ── Wetter ─────────────────────────────────────────────────── */
+.detail-card {
+    background: rgba(11,14,22,0.88);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: var(--radius-card);
+    backdrop-filter: none; position: relative; overflow: hidden;
+}
+.detail-card::before {
+    content: ''; position: absolute;
+    top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, var(--clr-green), var(--clr-blue));
+}
+.dc-label  { color: var(--clr-text-muted); text-transform: uppercase; letter-spacing: 2px; }
+.dc-value  { color: var(--clr-text); font-weight: 700; }
+.hero-desc { color: var(--clr-blue); }
+#forecast-grid .forecast-card {
+    background: rgba(11,14,22,0.88);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 14px;
+}
+.fc-day  { color: var(--clr-blue); }
+.fc-date { color: var(--clr-text-muted); }
+.fc-temp { color: var(--clr-text); }
+
+/* ── Windmap ─────────────────────────────────────────────────── */
+#wcr-windmap-wrap .glass,
+#wcr-windmap-wrap #kn-box,
+#wcr-windmap-wrap #windrose-box,
+#wcr-windmap-wrap #time-card,
+#wcr-windmap-wrap #spot-header,
+#wcr-windmap-wrap #timeline {
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+    background: rgba(6,8,14,0.92);
+    border: 1px solid rgba(1,158,227,0.18);
+    box-shadow: 0 0 18px rgba(1,158,227,0.06);
+}
+#wcr-windmap-wrap #kn-box                     { border-top: 2px solid var(--clr-blue); }
+#wcr-windmap-wrap #spot-header .dot           { background: var(--clr-blue); box-shadow: 0 0 10px var(--clr-blue), 0 0 26px rgba(1,158,227,0.4); }
+#wcr-windmap-wrap #tc-forecast                { color: var(--clr-blue); }
+#wcr-windmap-wrap #tc-badge                   { background: rgba(1,158,227,0.14); border-color: rgba(1,158,227,0.32); color: var(--clr-blue); }
+#wcr-windmap-wrap #tl-fill                    { background: linear-gradient(90deg, rgba(103,148,103,0.5), var(--clr-blue)); }
+#wcr-windmap-wrap #tl-cursor                  { background: var(--clr-blue); box-shadow: 0 0 8px var(--clr-blue); }
+#wcr-windmap-wrap #tl-cursor::before          { background: var(--clr-blue); box-shadow: 0 0 10px var(--clr-blue); }
+#wcr-windmap-wrap #tl-current-time span:first-child { background: rgba(1,158,227,0.14); border-color: rgba(1,158,227,0.32); color: var(--clr-blue); }
+#wcr-windmap-wrap #wr-degs                    { color: var(--clr-blue); }
+.ds-live-dot { background: var(--clr-blue); box-shadow: 0 0 12px var(--clr-blue), 0 0 28px rgba(1,158,227,0.35); }
+
+/* ── Merch ──────────────────────────────────────────────────── */
+.ms-info  { background: rgba(11,14,22,0.92); border-top: 1px solid rgba(255,255,255,0.05); }
+.ms-price { color: var(--clr-green); }
+.merch-dot.active { background: var(--clr-blue); }
+.merch-hl { background: rgba(11,14,22,0.88); border: 1px solid rgba(255,255,255,0.05); }
+.hl-price { color: var(--clr-green); }
+
+/* ── Öffnungszeiten Portrait ────────────────────────────────── */
+.oh-glass {
+    background: rgba(11,14,22,0.88);
+    border: 1px solid rgba(1,158,227,0.18);
+    box-shadow: 0 0 50px rgba(1,158,227,0.10), 0 0 0 1px rgba(255,255,255,0.04);
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+.oh-headline {
+    background: linear-gradient(135deg,
+        rgba(103,148,103,0.18) 0%,
+        rgba(1,158,227,0.14)   50%,
+        rgba(103,148,103,0.10) 100%);
+    border: 1px solid rgba(1,158,227,0.28);
+    box-shadow: 0 0 40px rgba(1,158,227,0.15);
+    backdrop-filter: none;
+}
+.oh-headline::after { background: linear-gradient(90deg, transparent, var(--clr-green), var(--clr-blue), transparent); }
+.oh-footer-line       { background: linear-gradient(90deg, transparent, rgba(1,158,227,0.38)) !important; }
+.oh-footer-line.right { background: linear-gradient(90deg, rgba(1,158,227,0.38), transparent) !important; }
+.oh-footer-inner { color: var(--clr-blue); }
+.oh-footer-dot   { background: var(--clr-blue); box-shadow: 0 0 12px var(--clr-blue); }
+.col-1-day       { color: rgba(226,232,240,0.40); }

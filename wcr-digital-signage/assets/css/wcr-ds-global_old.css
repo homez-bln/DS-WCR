@@ -1,0 +1,52 @@
+/* =============================================================
+   WCR Digital Signage – Global Stylesheet (OLD BACKUP)
+   Erstellt: 06.03.2026 - Backup vor CI-System v2.0
+   ============================================================= */
+
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+:root {
+    --clr-green:        #16a86f;
+    --clr-green-dim:    rgba(22, 168, 111, 0.75);
+    --clr-green-glow:   rgba(22, 168, 111, 0.07);
+    --clr-blue:         #00c8ff;
+    --clr-blue-dim:     rgba(0, 200, 255, 0.18);
+    --clr-bg:           #080808;
+    --clr-bg-dark:      #080c18;
+    --clr-text:         #eee;
+    --clr-text-muted:   #7a9abc;
+    --clr-border:       rgba(255, 255, 255, 0.12);
+    --font-main:        'Segoe UI', system-ui, sans-serif;
+    --viewport-w:       1920px;
+    --viewport-h:       1080px;
+    --radius-card:      18px;
+    --radius-large:     26px;
+    --blur-glass:       blur(20px) saturate(160%);
+}
+
+html, body {
+    width: var(--viewport-w);
+    height: var(--viewport-h);
+    overflow: hidden;
+    background: var(--clr-bg);
+    font-family: var(--font-main);
+    color: var(--clr-text);
+    -webkit-font-smoothing: antialiased;
+}
+
+.glass {
+    background: rgba(10, 18, 40, 0.60);
+    backdrop-filter: var(--blur-glass);
+    -webkit-backdrop-filter: var(--blur-glass);
+    border: 1px solid var(--clr-border);
+    border-radius: var(--radius-card);
+    color: #e8f0ff;
+    position: absolute;
+    z-index: 10;
+}
+
+/* [... rest of old CSS continues ...] */

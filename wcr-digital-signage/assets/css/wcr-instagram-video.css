@@ -1,0 +1,112 @@
+.wcr-iv-wrap {
+    width: 1080px;
+    height: 1920px;
+    background: #000;
+    position: relative;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+.wcr-iv-player {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 1;
+}
+.wcr-iv-fade {
+    position: absolute;
+    inset: 0;
+    background: #000;
+    z-index: 2;
+    opacity: 0;
+    transition: opacity 0.6s ease;
+    pointer-events: none;
+}
+.wcr-iv-fade.active { opacity: 1; }
+
+/* ── Top ── */
+.wcr-iv-top {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    z-index: 3;
+    padding: 36px 36px 80px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.75) 0%, transparent 100%);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+.wcr-iv-logo {
+    width: 56px; height: 56px;
+    background: linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%);
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.wcr-iv-logo svg { width: 32px; height: 32px; fill: #fff; }
+.wcr-iv-meta { display: flex; flex-direction: column; gap: 4px; }
+.wcr-iv-username { color: #fff; font-size: 28px; font-weight: 700; text-shadow: 0 1px 6px rgba(0,0,0,0.8); }
+.wcr-iv-time     { color: rgba(255,255,255,0.65); font-size: 20px; }
+.wcr-iv-counter  {
+    margin-left: auto;
+    background: rgba(255,255,255,0.15);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 30px;
+    color: #fff; font-size: 20px; font-weight: 600;
+    padding: 8px 22px;
+}
+
+/* ── Bottom ── */
+.wcr-iv-bottom {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    z-index: 3;
+    padding: 80px 36px 48px;
+    background: linear-gradient(0deg, rgba(0,0,0,0.75) 0%, transparent 100%);
+}
+.wcr-iv-hashtag {
+    color: rgba(255,255,255,0.5);
+    font-size: 22px;
+    text-align: center;
+    margin-bottom: 24px;
+    letter-spacing: 2px;
+}
+.wcr-iv-dots {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-bottom: 18px;
+}
+.wcr-iv-dot {
+    flex: 1;
+    height: 4px;
+    background: rgba(255,255,255,0.25);
+    border-radius: 4px;
+    overflow: hidden;
+    max-width: 180px;
+}
+.wcr-iv-dot-fill {
+    height: 100%;
+    width: 0%;
+    background: #fff;
+    border-radius: 4px;
+    transition: none;
+}
+.wcr-iv-dot.active .wcr-iv-dot-fill { transition: width linear; }
+.wcr-iv-dot.done   .wcr-iv-dot-fill { width: 100%; }
+
+/* ── Mute ── */
+.wcr-iv-mute {
+    position: absolute;
+    top: 36px; right: 36px;
+    z-index: 4;
+    width: 64px; height: 64px;
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    font-size: 26px;
+}

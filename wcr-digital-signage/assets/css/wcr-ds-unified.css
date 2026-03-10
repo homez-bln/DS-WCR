@@ -1,0 +1,494 @@
+/**
+ * ══════════════════════════════════════════════════════════════════════
+ * WCR DIGITAL SIGNAGE – UNIFIED DESIGN SYSTEM
+ * ──────────────────────────────────────────────────────────────────────
+ * Version: 2.0
+ * Datum:   06.03.2026
+ * Zweck:   Einheitliche CI für alle DS-Seiten (PiSignage)
+ *          → Getränke, Essen, Cable, Camping, Kino, Events etc.
+ * 
+ * Prinzipien:
+ *   • Zentrale Farbvariablen aus DS-Controller
+ *   • Einheitliche Komponenten (Cards, Buttons, Badges, Tables)
+ *   • Gleiche Typografie & Layout-Raster
+ *   • Wiedererkennbare Glass-Morphism Effekte
+ *   • Optimiert für TV-Auflösung (1920x1080)
+ * ══════════════════════════════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════════════════════════════
+   1. DESIGN TOKENS (CI-Farben aus DS-Controller)
+   ══════════════════════════════════════════════════════════════════════ */
+:root {
+  /* Haupt-Brandfarben */
+  --clr-green:     #679467;  /* Primär (Grün-Akzent) */
+  --clr-blue:      #011e45;  /* Sekundär (Dunkelblau) */
+  --clr-white:     #f1f1f1;  /* Hell (Cards/Borders) */
+  
+  /* Text & Grautöne */
+  --clr-text:      #ececec;  /* Haupt-Text */
+  --clr-muted:     #7a8a8a;  /* Sekundär-Text / deaktiviert */
+  
+  /* Hintergründe */
+  --clr-bg:        #000806;  /* Haupt-Hintergrund */
+  --clr-bg-dark:   #0b0b0b;  /* Dunkler Bereich */
+  --clr-bg-glass:  rgba(10, 14, 24, 0.65);  /* Glass-Morphism */
+  
+  /* Funktionale Farben (abgeleitet) */
+  --clr-success:   #679467;  /* = green */
+  --clr-warning:   #f59e0b;  /* Gelb/Orange */
+  --clr-danger:    #ef4444;  /* Rot (z.B. "ausverkauft") */
+  --clr-info:      #3b82f6;  /* Blau (Info-Badges) */
+  
+  /* Schatten & Effekte */
+  --shadow-sm:     0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-md:     0 4px 16px rgba(0, 0, 0, 0.5);
+  --shadow-lg:     0 8px 32px rgba(0, 0, 0, 0.6);
+  --shadow-glow:   0 0 20px rgba(103, 148, 103, 0.3);  /* Grüner Glow */
+  
+  /* Abstände & Radius */
+  --radius-sm:     8px;
+  --radius-md:     12px;
+  --radius-lg:     16px;
+  --radius-xl:     24px;
+  
+  --gap-xs:        8px;
+  --gap-sm:        12px;
+  --gap-md:        16px;
+  --gap-lg:        24px;
+  --gap-xl:        32px;
+  
+  /* Typografie */
+  --font-family:   'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-display:  'Inter', sans-serif;  /* Für Headlines */
+  
+  --fs-xs:         12px;
+  --fs-sm:         14px;
+  --fs-base:       16px;
+  --fs-lg:         18px;
+  --fs-xl:         22px;
+  --fs-2xl:        28px;
+  --fs-3xl:        36px;
+  --fs-4xl:        48px;
+  
+  --fw-normal:     400;
+  --fw-medium:     500;
+  --fw-semibold:   600;
+  --fw-bold:       700;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   2. GLOBAL RESET & BASE STYLES
+   ══════════════════════════════════════════════════════════════════════ */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;  /* Kein Scroll auf TV */
+}
+
+body {
+  font-family: var(--font-family);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-normal);
+  line-height: 1.6;
+  color: var(--clr-text);
+  background: var(--clr-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   3. TYPOGRAPHY
+   ══════════════════════════════════════════════════════════════════════ */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: var(--fw-bold);
+  line-height: 1.2;
+  color: var(--clr-white);
+  margin-bottom: var(--gap-sm);
+}
+
+h1 { font-size: var(--fs-4xl); letter-spacing: -0.02em; }
+h2 { font-size: var(--fs-3xl); letter-spacing: -0.01em; }
+h3 { font-size: var(--fs-2xl); }
+h4 { font-size: var(--fs-xl); }
+h5 { font-size: var(--fs-lg); }
+h6 { font-size: var(--fs-base); }
+
+p {
+  margin-bottom: var(--gap-sm);
+}
+
+.text-muted {
+  color: var(--clr-muted);
+}
+
+.text-green {
+  color: var(--clr-green);
+}
+
+.text-center {
+  text-align: center;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   4. LAYOUT COMPONENTS
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Container (max-width für alle Seiten) */
+.ds-container {
+  width: 100%;
+  max-width: 1800px;
+  margin: 0 auto;
+  padding: var(--gap-xl);
+}
+
+/* Header (einheitlich für alle Seiten) */
+.ds-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--gap-xl);
+  padding-bottom: var(--gap-md);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ds-header__title {
+  font-size: var(--fs-3xl);
+  font-weight: var(--fw-bold);
+  color: var(--clr-green);
+  margin: 0;
+}
+
+.ds-header__meta {
+  display: flex;
+  gap: var(--gap-md);
+  align-items: center;
+  font-size: var(--fs-lg);
+  color: var(--clr-muted);
+}
+
+/* Grid System */
+.ds-grid {
+  display: grid;
+  gap: var(--gap-lg);
+}
+
+.ds-grid--2 { grid-template-columns: repeat(2, 1fr); }
+.ds-grid--3 { grid-template-columns: repeat(3, 1fr); }
+.ds-grid--4 { grid-template-columns: repeat(4, 1fr); }
+.ds-grid--auto { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   5. CARD COMPONENT (Glass-Morphism)
+   ══════════════════════════════════════════════════════════════════════ */
+.ds-card {
+  background: var(--clr-bg-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  padding: var(--gap-lg);
+  box-shadow: var(--shadow-md);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.ds-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg), var(--shadow-glow);
+}
+
+.ds-card__title {
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-semibold);
+  margin-bottom: var(--gap-sm);
+  color: var(--clr-green);
+}
+
+.ds-card__subtitle {
+  font-size: var(--fs-sm);
+  color: var(--clr-muted);
+  margin-bottom: var(--gap-md);
+}
+
+.ds-card__content {
+  font-size: var(--fs-base);
+  line-height: 1.6;
+}
+
+/* Card Varianten */
+.ds-card--solid {
+  background: var(--clr-bg-dark);
+  backdrop-filter: none;
+}
+
+.ds-card--accent {
+  border-color: var(--clr-green);
+  box-shadow: 0 0 0 1px var(--clr-green), var(--shadow-md);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   6. BADGE COMPONENT
+   ══════════════════════════════════════════════════════════════════════ */
+.ds-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.ds-badge--green {
+  background: rgba(103, 148, 103, 0.2);
+  color: var(--clr-green);
+  border: 1px solid var(--clr-green);
+}
+
+.ds-badge--blue {
+  background: rgba(1, 30, 69, 0.3);
+  color: #3b82f6;
+  border: 1px solid #3b82f6;
+}
+
+.ds-badge--danger {
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--clr-danger);
+  border: 1px solid var(--clr-danger);
+}
+
+.ds-badge--warning {
+  background: rgba(245, 158, 11, 0.2);
+  color: var(--clr-warning);
+  border: 1px solid var(--clr-warning);
+}
+
+.ds-badge--muted {
+  background: rgba(122, 138, 138, 0.2);
+  color: var(--clr-muted);
+  border: 1px solid var(--clr-muted);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   7. BUTTON COMPONENT
+   ══════════════════════════════════════════════════════════════════════ */
+.ds-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap-xs);
+  padding: 12px 24px;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  font-family: var(--font-family);
+  text-decoration: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.ds-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.ds-btn--primary {
+  background: var(--clr-green);
+  color: var(--clr-bg);
+}
+
+.ds-btn--primary:hover {
+  background: #7aa97a;
+  box-shadow: var(--shadow-glow);
+}
+
+.ds-btn--secondary {
+  background: var(--clr-bg-glass);
+  color: var(--clr-text);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+}
+
+.ds-btn--ghost {
+  background: transparent;
+  color: var(--clr-green);
+  border: 1px solid var(--clr-green);
+}
+
+.ds-btn--ghost:hover {
+  background: rgba(103, 148, 103, 0.1);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   8. TABLE COMPONENT
+   ══════════════════════════════════════════════════════════════════════ */
+.ds-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-base);
+}
+
+.ds-table thead {
+  background: var(--clr-bg-dark);
+  border-bottom: 2px solid var(--clr-green);
+}
+
+.ds-table th {
+  padding: var(--gap-md);
+  text-align: left;
+  font-weight: var(--fw-semibold);
+  color: var(--clr-green);
+  text-transform: uppercase;
+  font-size: var(--fs-sm);
+  letter-spacing: 0.05em;
+}
+
+.ds-table td {
+  padding: var(--gap-md);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  color: var(--clr-text);
+}
+
+.ds-table tbody tr {
+  transition: background 0.2s;
+}
+
+.ds-table tbody tr:hover {
+  background: rgba(103, 148, 103, 0.05);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   9. TICKER COMPONENT (für laufende Texte)
+   ══════════════════════════════════════════════════════════════════════ */
+.ds-ticker {
+  width: 100%;
+  overflow: hidden;
+  background: var(--clr-bg-dark);
+  border-radius: var(--radius-sm);
+  padding: var(--gap-sm) 0;
+}
+
+.ds-ticker__content {
+  display: flex;
+  gap: var(--gap-xl);
+  animation: ticker-scroll 30s linear infinite;
+  white-space: nowrap;
+}
+
+@keyframes ticker-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.ds-ticker__item {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-medium);
+  color: var(--clr-text);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   10. UTILITY CLASSES
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Spacing */
+.mb-0 { margin-bottom: 0; }
+.mb-1 { margin-bottom: var(--gap-xs); }
+.mb-2 { margin-bottom: var(--gap-sm); }
+.mb-3 { margin-bottom: var(--gap-md); }
+.mb-4 { margin-bottom: var(--gap-lg); }
+.mb-5 { margin-bottom: var(--gap-xl); }
+
+.mt-0 { margin-top: 0; }
+.mt-1 { margin-top: var(--gap-xs); }
+.mt-2 { margin-top: var(--gap-sm); }
+.mt-3 { margin-top: var(--gap-md); }
+.mt-4 { margin-top: var(--gap-lg); }
+.mt-5 { margin-top: var(--gap-xl); }
+
+/* Display */
+.d-flex { display: flex; }
+.d-grid { display: grid; }
+.d-none { display: none; }
+
+/* Flexbox */
+.flex-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.flex-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.gap-1 { gap: var(--gap-xs); }
+.gap-2 { gap: var(--gap-sm); }
+.gap-3 { gap: var(--gap-md); }
+.gap-4 { gap: var(--gap-lg); }
+.gap-5 { gap: var(--gap-xl); }
+
+/* Opacity */
+.opacity-50 { opacity: 0.5; }
+.opacity-75 { opacity: 0.75; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   11. ANIMATIONS
+   ══════════════════════════════════════════════════════════════════════ */
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.5s ease-out;
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   12. RESPONSIVE (optional für Portrait-Modus)
+   ══════════════════════════════════════════════════════════════════════ */
+@media (orientation: portrait) {
+  .ds-grid--2,
+  .ds-grid--3,
+  .ds-grid--4 {
+    grid-template-columns: 1fr;
+  }
+  
+  .ds-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--gap-sm);
+  }
+}

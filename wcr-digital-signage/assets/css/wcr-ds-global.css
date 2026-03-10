@@ -1,0 +1,492 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+ * WCR DIGITAL SIGNAGE – CI SYSTEM v2.0
+ * ───────────────────────────────────────────────────────────────────────────
+ * Einheitliches Design-System für alle Digital-Signage-Seiten
+ * Farben aus DS-Controller (06.03.2026)
+ * 
+ * Struktur:
+ *   1. CSS-Variablen (Design-Tokens)
+ *   2. Base Styles & Reset
+ *   3. Typography System
+ *   4. Layout System
+ *   5. Glass/Theme Effects
+ *   6. Component Overrides (alte Klassen bleiben kompatibel)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ═══ 1. DESIGN TOKENS ═══ */
+:root {
+  /* Deine CI-Farben aus DS-Controller */
+  --clr-green:        #679467;
+  --clr-green-dim:    rgba(103, 148, 103, 0.70);
+  --clr-green-glow:   rgba(103, 148, 103, 0.08);
+  --clr-blue:         #011e45;
+  --clr-blue-dim:     rgba(1, 30, 69, 0.18);
+  --clr-white:        #f1f1f1;
+  --clr-text:         #ececec;
+  --clr-text-muted:   #7a8a8a;
+  --clr-bg:           #000806;
+  --clr-bg-dark:      #0b0b0b;
+  --clr-bg-glass:     rgba(10, 14, 24, 0.65);
+  --clr-border:       rgba(255, 255, 255, 0.09);
+  
+  /* Typografie */
+  --font-main:        'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-display:     var(--font-main);
+  
+  /* Viewport */
+  --viewport-w:       1920px;
+  --viewport-h:       1080px;
+  
+  /* Radien & Abstände */
+  --radius-sm:        8px;
+  --radius-md:        12px;
+  --radius-lg:        18px;
+  --radius-xl:        26px;
+  --radius-pill:      9999px;
+  
+  --gap-xs:           8px;
+  --gap-sm:           12px;
+  --gap-md:           16px;
+  --gap-lg:           24px;
+  --gap-xl:           40px;
+  
+  /* Schatten & Blur */
+  --shadow-sm:        0 2px 8px rgba(0, 0, 0, 0.15);
+  --shadow-md:        0 4px 16px rgba(0, 0, 0, 0.25);
+  --shadow-lg:        0 8px 32px rgba(0, 0, 0, 0.35);
+  --blur-glass:       blur(20px) saturate(160%);
+  
+  /* Timing */
+  --timing-fast:      0.15s;
+  --timing-base:      0.25s;
+  --timing-slow:      0.4s;
+}
+
+/* ═══ 2. BASE RESET ═══ */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: var(--viewport-w);
+  height: var(--viewport-h);
+  overflow: hidden;
+  background: var(--clr-bg);
+  font-family: var(--font-main);
+  color: var(--clr-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ═══ 3. TYPOGRAFIE-SYSTEM ═══ */
+.ds-h1 {
+  font-size: 4rem;
+  font-weight: 900;
+  letter-spacing: -2px;
+  line-height: 1.1;
+  color: var(--clr-white);
+}
+.ds-h2 {
+  font-size: 3rem;
+  font-weight: 800;
+  letter-spacing: -1px;
+  line-height: 1.2;
+  color: var(--clr-white);
+}
+.ds-h3 {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 6px;
+  line-height: 1.3;
+  text-transform: uppercase;
+  color: var(--clr-green);
+}
+.ds-body {
+  font-size: 1.5rem;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--clr-text);
+}
+.ds-small {
+  font-size: 0.9rem;
+  font-weight: 400;
+  color: var(--clr-text-muted);
+}
+.ds-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--clr-text-muted);
+}
+
+/* ═══ 4. LAYOUT-SYSTEM ═══ */
+.ds-container {
+  width: var(--viewport-w);
+  height: var(--viewport-h);
+  padding: var(--gap-xl);
+}
+.ds-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--gap-lg);
+}
+.ds-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--gap-lg);
+}
+.ds-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--gap-lg);
+}
+.ds-flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ds-flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ═══ 5. GLASS & THEME EFFECTS ═══ */
+.glass {
+  background: var(--clr-bg-glass);
+  backdrop-filter: var(--blur-glass);
+  -webkit-backdrop-filter: var(--blur-glass);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-lg);
+  color: var(--clr-text);
+  position: relative;
+}
+
+/* Theme Variations (gesteuert via PHP wcr_ds_dynamic_css) */
+body[data-theme="flat"] .glass {
+  background: var(--clr-bg-dark);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+body[data-theme="aurora"] .glass {
+  background: var(--clr-blue-dim);
+  backdrop-filter: none;
+  border: 1px solid var(--clr-blue-dim);
+}
+
+/* ═══ 6. COMPONENT OVERRIDES (alte Klassen bleiben kompatibel) ═══ */
+
+/* Header mit Dots */
+.ds-header {
+  position: relative;
+  z-index: 1;
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap-md);
+  padding: 0 var(--gap-xl);
+}
+.ds-header-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--clr-green-dim));
+}
+.ds-header-line.right {
+  background: linear-gradient(90deg, var(--clr-green-dim), transparent);
+}
+.ds-header-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--clr-green);
+  text-transform: uppercase;
+  letter-spacing: 6px;
+  white-space: nowrap;
+}
+
+/* Dots */
+.ds-dot {
+  width: 7px;
+  height: 7px;
+  background: var(--clr-green);
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--clr-green);
+  flex-shrink: 0;
+}
+.ds-live-dot {
+  width: 14px;
+  height: 14px;
+  background: var(--clr-blue);
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--clr-blue), 0 0 28px rgba(1, 30, 69, 0.27);
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 10px var(--clr-blue), 0 0 28px rgba(1, 30, 69, 0.27); }
+  50%      { box-shadow: 0 0 18px var(--clr-blue), 0 0 44px rgba(1, 30, 69, 0.53); }
+}
+
+/* Global Subhead */
+.ds-head-global {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--clr-green);
+  text-transform: uppercase;
+  letter-spacing: 5px;
+  text-align: center;
+  padding-bottom: var(--gap-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap-xs);
+}
+.ds-head-global::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: var(--clr-green);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--clr-green);
+  flex-shrink: 0;
+}
+
+/* HR */
+.ds-hr {
+  width: 80%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--clr-green), transparent);
+  border: none;
+  margin: 0 auto 10px;
+  display: block;
+  clear: both;
+}
+
+/* Subhead (H3) */
+h3.ds-subhead {
+  color: var(--clr-green-dim);
+  font-size: 2rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 8px;
+  margin: 10px 0 4px 0;
+  padding: 0;
+}
+h3.ds-subhead:first-child {
+  margin-top: 0;
+}
+
+/* Alte Produkt-Tabelle (weiterhin kompatibel) */
+.ds-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: none;
+}
+.ds-table tr { border: none; }
+.ds-table td {
+  padding: 2px 0;
+  vertical-align: baseline;
+  border: none;
+}
+.produkt {
+  font-size: 2rem;
+  font-weight: 400;
+  color: var(--clr-text);
+  width: 65%;
+  padding-right: 12px;
+  line-height: 1.3;
+}
+.preis {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--clr-white);
+  text-align: right;
+  white-space: nowrap;
+  padding-right: 8px;
+}
+.euro {
+  font-size: 0.6em;
+  font-weight: 400;
+  color: rgba(236, 236, 236, 0.35);
+  margin-left: 3px;
+}
+
+/* Empty State */
+.ds-empty {
+  color: rgba(255, 255, 255, 0.15);
+  font-size: 1.2rem;
+  padding: 20px 0;
+}
+
+/* Card (alte Version kompatibel, neue Style) */
+.ds-card,
+.k-card {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: var(--blur-glass);
+  -webkit-backdrop-filter: var(--blur-glass);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-xl);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 20px 16px 16px;
+  position: relative;
+  overflow: hidden;
+}
+.ds-card::before,
+.k-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 10%; right: 10%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+}
+.ds-card::after,
+.k-card::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 25%; right: 25%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--clr-green-dim), transparent);
+}
+
+/* Animations */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* BG Gradient */
+.ds-bg-gradient {
+  background:
+    radial-gradient(circle at 80% 20%, var(--clr-green-glow), transparent 40%),
+    radial-gradient(circle at 20% 80%, var(--clr-blue-dim), transparent 40%);
+}
+
+/* ═══ LEGACY SUPPORT (bestehende Seiten bleiben funktional) ═══ */
+.cols-wrap::after {
+  content: '';
+  display: table;
+  clear: both;
+}
+.list_one,
+.list_two,
+.list_tree {
+  width: 33.333%;
+  height: 900px;
+  float: left;
+  padding: 0 28px;
+  box-sizing: border-box;
+}
+.bier-mix { padding-top: 1.6em; }
+.Saft     { padding-top: 1.6em; }
+
+/* ═══ SPEZIAL-KOMPONENTEN (Wetter, Windmap, Kaffee, Merch) ═══ */
+/* Diese bleiben unverändert aus dem alten CSS */
+/* Hier nur minimal angepasst auf neue Farben */
+
+#wetter-wrap {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: var(--viewport-h);
+  width: var(--viewport-w);
+  padding: 60px 80px;
+  gap: 40px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 80% 20%, var(--clr-green-glow), transparent 40%),
+    radial-gradient(circle at 20% 80%, var(--clr-blue-dim), transparent 40%);
+}
+#wetter-wrap header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding-bottom: 20px;
+  border-bottom: 2px solid var(--clr-border);
+}
+#clock-time  { font-size: 5rem; font-weight: 200; line-height: 1; letter-spacing: -2px; color: var(--clr-text); }
+#clock-date  { font-size: 1.8rem; color: var(--clr-text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 2px; text-align: right; }
+#w-location  { font-size: 3rem; font-weight: 700; color: var(--clr-white); margin-bottom: 5px; }
+#wetter-wrap main { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center; }
+.current-hero        { display: flex; align-items: center; gap: 40px; }
+.hero-icon svg       { width: 280px; height: 280px; filter: drop-shadow(0 0 30px rgba(255,255,255,0.1)); }
+.hero-temp           { font-size: 11rem; font-weight: 700; line-height: 1; letter-spacing: -5px; color: var(--clr-white); }
+.hero-unit           { font-size: 4rem; color: var(--clr-text-muted); font-weight: 300; vertical-align: top; margin-top: 20px; display: inline-block; }
+.hero-desc           { font-size: 2.2rem; color: var(--clr-green); font-weight: 500; margin-top: 10px; padding-left: 10px; }
+.current-details     { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.detail-card         { padding: 30px; display: flex; flex-direction: column; justify-content: center; }
+.dc-label            { color: var(--clr-text-muted); font-size: 1.1rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+.dc-value            { font-size: 2.5rem; font-weight: 600; color: var(--clr-white); }
+.dc-sub              { font-size: 1rem; color: var(--clr-text-muted); margin-left: 8px; }
+#forecast-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 25px; height: 320px; }
+.forecast-card       { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+.fc-day              { font-size: 1.4rem; color: var(--clr-green); font-weight: 700; margin-bottom: 5px; }
+.fc-date             { font-size: 1rem; color: var(--clr-text-muted); margin-bottom: 20px; }
+.fc-icon svg         { width: 80px; height: 80px; margin-bottom: 20px; fill: #e2e8f0; }
+.fc-temp             { font-size: 2.2rem; font-weight: 700; color: var(--clr-white); }
+.fc-low              { font-size: 1.4rem; color: var(--clr-text-muted); font-weight: 400; }
+
+/* Windmap */
+#wcr-windmap-wrap { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: var(--clr-bg); font-family: var(--font-main); }
+#wcr-windmap-wrap #map { position: absolute; inset: 0; width: 1920px; height: 1080px; z-index: 0; }
+#wcr-windmap-wrap #wind-canvas { position: absolute; inset: 0; width: 1920px; height: 1080px; z-index: 4; pointer-events: none; }
+#wcr-windmap-wrap #gust-canvas { position: absolute; inset: 0; width: 1920px; height: 1080px; z-index: 5; pointer-events: none; }
+#wcr-windmap-wrap .glass { background: var(--clr-bg-glass); backdrop-filter: var(--blur-glass); -webkit-backdrop-filter: var(--blur-glass); border: 1px solid var(--clr-border); border-radius: var(--radius-lg); color: var(--clr-text); position: absolute; z-index: 10; }
+#wcr-windmap-wrap #spot-header { top: 36px; left: 48px; padding: 14px 28px; display: flex; align-items: center; gap: 14px; z-index: 10; }
+#wcr-windmap-wrap #spot-header .dot { width: 14px; height: 14px; background: var(--clr-blue); border-radius: 50%; box-shadow: 0 0 10px var(--clr-blue), 0 0 28px rgba(1,30,69,0.27); animation: wcr-pulse 2s infinite; flex-shrink: 0; }
+@keyframes wcr-pulse { 0%, 100% { box-shadow: 0 0 10px var(--clr-blue), 0 0 28px rgba(1,30,69,0.27); } 50% { box-shadow: 0 0 18px var(--clr-blue), 0 0 44px rgba(1,30,69,0.53); } }
+#wcr-windmap-wrap #time-card { top: 36px; right: 48px; padding: 14px 26px; text-align: right; min-width: 260px; z-index: 10; }
+#wcr-windmap-wrap #tc-forecast { font-size: 1.25rem; font-weight: 700; color: var(--clr-green); }
+#wcr-windmap-wrap #tc-realtime { font-size: 0.82rem; color: var(--clr-text-muted); margin-top: 4px; }
+#wcr-windmap-wrap #tc-badge { display: inline-block; margin-top: 6px; background: var(--clr-blue-dim); border: 1px solid var(--clr-blue-dim); border-radius: 30px; padding: 2px 14px; font-size: 0.8rem; color: var(--clr-blue); font-weight: 600; }
+/* [Rest of windmap CSS...] */
+
+/* Kaffee Grid */
+.kaffee-grid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(2, 1fr); gap: 18px; padding: 0 40px 40px; height: calc(1080px - 96px); }
+.k-img-wrap { width: 70%; aspect-ratio: 1; border-radius: 50%; background: var(--clr-green-glow); border: 1px solid var(--clr-green-dim); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.k-img-wrap img { width: 85%; height: 85%; object-fit: contain; filter: drop-shadow(0 4px 14px rgba(0,0,0,0.55)); }
+.k-name  { font-size: 1rem; font-weight: 600; color: rgba(236,236,236,0.9); text-align: center; line-height: 1.3; letter-spacing: 0.3px; }
+.k-price { font-size: 2.2rem; font-weight: 900; color: var(--clr-white); line-height: 1; letter-spacing: -1px; }
+.k-price .euro { font-size: 1rem; font-weight: 400; color: rgba(255,255,255,0.3); margin-left: 4px; letter-spacing: 0; }
+
+/* Food Kat Header */
+.food-kat-header { display: flex; align-items: center; gap: 28px; padding: 20px 36px; margin-bottom: 16px; background: rgba(255,255,255,0.04); border-left: 4px solid var(--clr-green); border-radius: var(--radius-md); transition: border-color 0.3s, background 0.3s; }
+.food-kat-header.geschlossen { border-left-color: #ff3b30; background: rgba(255,59,48,0.05); opacity: 0.6; }
+.food-kat-name { min-width: 220px; font-size: 2rem; font-weight: 900; letter-spacing: 6px; text-transform: uppercase; color: var(--clr-green); }
+.food-kat-header.geschlossen .food-kat-name { color: rgba(255,255,255,0.25); text-decoration: line-through; }
+.food-kat-line { flex: 1; height: 1px; background: linear-gradient(90deg, var(--clr-green-dim), transparent); }
+.food-kat-header.geschlossen .food-kat-line { background: linear-gradient(90deg, rgba(255,59,48,0.25), transparent); }
+.food-kat-badge { font-size: 0.9rem; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; color: #ff3b30; background: rgba(255,59,48,0.12); border: 1px solid rgba(255,59,48,0.35); border-radius: 20px; padding: 4px 16px; margin-left: 16px; vertical-align: middle; }
+
+/* Merch/Extra Slider */
+#merch-wrap { display: grid; grid-template-columns: 1fr 320px; gap: var(--gap-xl); height: calc(var(--viewport-h) - 96px - (var(--gap-xl) * 2)); padding: var(--gap-xl); box-sizing: border-box; }
+.merch-main { display: flex; flex-direction: column; gap: 20px; overflow: hidden; position: relative; }
+.merch-slider { flex: 1; position: relative; overflow: hidden; border-radius: var(--radius-xl); }
+.merch-slide-inner { position: relative; width: 100%; height: 100%; }
+.merch-slide { position: absolute; inset: 0; display: flex; flex-direction: column; opacity: 0; pointer-events: none; transition: opacity 0.5s ease; }
+.merch-slide.active { opacity: 1; pointer-events: auto; }
+.ms-img-wrap { flex: 1; overflow: hidden; border-radius: var(--radius-xl) var(--radius-xl) 0 0; }
+.ms-img { width: 100%; height: 100%; object-fit: cover; }
+.ms-img-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 8rem; background: var(--clr-bg-dark); }
+.ms-info { padding: 24px 32px; border-radius: 0 0 var(--radius-xl) var(--radius-xl); display: flex; align-items: center; justify-content: space-between; }
+.ms-name  { font-size: 2.4rem; font-weight: 700; color: var(--clr-text); letter-spacing: 2px; }
+.ms-price { font-size: 3rem; font-weight: 800; color: var(--clr-green); }
+.ms-euro  { font-size: 1.6rem; opacity: 0.7; }
+.merch-dots { display: flex; justify-content: center; gap: 10px; padding: 4px 0; }
+.merch-dot { width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,0.2); cursor: pointer; transition: background 0.3s, transform 0.3s; }
+.merch-dot.active { background: var(--clr-green); transform: scale(1.3); }
+.merch-sidebar { display: flex; flex-direction: column; gap: 16px; }
+.merch-hl { flex: 1; display: flex; align-items: center; gap: 16px; padding: 16px 20px; border-radius: var(--radius-lg); overflow: hidden; }
+.hl-img { width: 80px; height: 80px; object-fit: cover; border-radius: var(--radius-md); flex-shrink: 0; }
+.hl-img-placeholder { width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; background: var(--clr-bg-dark); border-radius: var(--radius-md); flex-shrink: 0; }
+.hl-info { flex: 1; min-width: 0; }
+.hl-name  { font-size: 1.1rem; font-weight: 700; color: var(--clr-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hl-price { font-size: 1.4rem; font-weight: 800; color: var(--clr-green); margin-top: 4px; }
+.hl-euro  { font-size: 0.9rem; opacity: 0.7; }

@@ -1,0 +1,360 @@
+/* =============================================================
+   WCR Digital Signage — PORTRAIT Stylesheet  v3
+   Format:  1080 × 1920 px  (9:16)
+   Seite:   Öffnungszeiten  /oeffnungszeiten-story/
+   Ziel:    Instagram-taugliches Layout
+   ============================================================= */
+
+/* ── Reset ─────────────────────────────────────────────────── */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+/* ── Design Tokens ──────────────────────────────────────────── */
+:root {
+    /* Farben — werden per wcr_ds_dynamic_css überschrieben */
+    --clr-green:        #679467;
+    --clr-green-dim:    rgba(103, 148, 103, 0.70);
+    --clr-blue:         #019ee3;
+    --clr-bg:           #080808;
+    --clr-bg-dark:      #0d0d0d;
+    --clr-text:         #eeeeee;
+    --clr-text-muted:   #7a8a8a;
+    --clr-border:       rgba(255, 255, 255, 0.09);
+
+    --font-main:        'Segoe UI', system-ui, sans-serif;
+
+    /* PORTRAIT: 1080 × 1920 */
+    
+    --radius-card:      24px;
+    --radius-large:     36px;
+    --blur-glass:       blur(24px) saturate(160%);
+    --header-height:    140px;
+    --padding-global:   60px;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&display=swap');
+
+/* ── Body ───────────────────────────────────────────────────── */
+.elementor {
+    width: 1080px !important;
+    max-width: 1080px !important;
+    margin: 0 0 !important;
+}
+html, body {
+    
+  	width: 1080px !important;
+    background: var(--clr-bg);
+    font-family: var(--font-main);
+    color: var(--clr-text);
+    -webkit-font-smoothing: antialiased;
+}
+
+body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+        radial-gradient(ellipse 80% 40% at 50% 0%,   rgba(103, 148, 103, 0.10) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 30% at 50% 100%,  rgba(1, 158, 227, 0.07)  0%, transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* ── Glassmorphism-Basis ────────────────────────────────────── */
+.glass {
+    background: rgba(10, 14, 24, 0.65);
+    backdrop-filter: var(--blur-glass);
+    -webkit-backdrop-filter: var(--blur-glass);
+    border: 1px solid var(--clr-border);
+    border-radius: var(--radius-card);
+    position: relative;
+    z-index: 10;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ÖFFNUNGSZEITEN  —  Instagram Portrait Layout
+   
+   Aufbau (von oben nach unten):
+   
+   [  Hintergrundbild (Elementor Section BG)  ]
+   
+   ┌──────────────────────────────────────────┐  ← .oh-wrapper
+   │                                          │
+   │         [  .oh-headline  ]               │  ← 18% Höhe
+   │                                          │
+   │  ┌────────────────────────────────────┐  │
+   │  │  .oh-glass                         │  │  ← 62% Höhe
+   │  │  .oh-table                         │  │
+   │  │  Mo: 10 – 20 UHR                   │  │
+   │  │  Di: 10 – 20 UHR                   │  │
+   │  │  Mi: 10 – 20 UHR                   │  │
+   │  │  Do: 10 – 20 UHR                   │  │
+   │  │  Fr: 10 – 20 UHR                   │  │
+   │  └────────────────────────────────────┘  │
+   │                                          │
+   │         [  .oh-footer  ]                 │  ← 8% Höhe
+   │                                          │
+   └──────────────────────────────────────────┘
+   ============================================================= */
+
+/* ── Outer Wrapper ─────────────────────────────────────────── */
+
+
+/* ── Headline ──────────────────────────────────────────────── */
+.oh-headline {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 24px 56px;
+    border-radius: 28px;
+    font-family: 'Caveat', cursive !important;
+    font-size: 96px;
+    font-weight: 700;
+    color: #ffffff;
+    text-align: center;
+    text-shadow: 0 4px 24px rgba(0, 0, 0, 0.95);
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+    white-space: nowrap;
+
+    /* Glass — wird per dynamic CSS überschrieben */
+    background: radial-gradient(
+        circle at top left,
+        rgba(103, 148, 103, 0.35) 0%,
+        rgba(1, 158, 227, 0.20)   45%,
+        rgba(0, 0, 0, 0.35)       100%
+    );
+    box-shadow:
+        0 24px 60px rgba(0, 0, 0, 0.75),
+        0 0 0 1px rgba(255, 255, 255, 0.25);
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+}
+
+/* Dekorative Linie */
+.oh-headline::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 18%;
+    right: 18%;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, var(--clr-green), transparent);
+    border-radius: 2px;
+}
+
+/* ── Haupt-Panel ───────────────────────────────────────────── */
+.oh-glass {
+    display: block;
+    width: 100%;
+    padding: 56px 68px;
+    border-radius: var(--radius-large);
+
+    /* Glass default — dynamic CSS überschreibt */
+    background: radial-gradient(
+        circle at top left,
+        rgba(103, 148, 103, 0.26) 0%,
+        rgba(1, 158, 227, 0.14)   40%,
+        rgba(0, 0, 0, 0.50)       100%
+    );
+    box-shadow:
+        0 48px 96px rgba(0, 0, 0, 0.80),
+        0 0 0 1px rgba(255, 255, 255, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.10);
+    backdrop-filter: blur(28px) saturate(170%);
+    -webkit-backdrop-filter: blur(28px) saturate(170%);
+}
+
+/* ── Tabelle ───────────────────────────────────────────────── */
+.oh-table {
+    width: 100%;
+    border: none !important;
+    border-spacing: 0 !important;
+    border-collapse: collapse !important;
+    font-family: var(--font-main);
+    color: #ffffff;
+    text-shadow: 0 4px 14px rgba(0, 0, 0, 0.85);
+    line-height: 1.2;
+}
+
+.oh-table tr {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07) !important;
+}
+.oh-table tr:last-child { border-bottom: none !important; }
+
+.oh-table td {
+    padding: 22px 0;
+    vertical-align: middle;
+    white-space: nowrap;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+.oh-table th { border: none !important; background: transparent !important; }
+
+/* Heute hervorheben */
+.oh-table tr.today td {
+    color: var(--clr-green);
+    text-shadow: 0 0 24px rgba(103, 148, 103, 0.5);
+}
+.oh-table tr.today .col-1-day::before {
+    content: '▶ ';
+    font-size: 0.55em;
+    opacity: 0.9;
+}
+
+/* Geschlossen */
+.oh-table tr.geschlossen td {
+    color: rgba(255, 255, 255, 0.20);
+}
+
+/* ── Spalten ───────────────────────────────────────────────── */
+
+/* Wochentag (Mo:) */
+.col-1-day {
+    text-align: right;
+    font-size: 62px;
+    font-weight: 800;
+    width: 170px;
+    letter-spacing: 0.06em;
+    padding-right: 24px;
+    color: rgba(255, 255, 255, 0.65);
+}
+
+/* Startzeit */
+.col-2-start {
+    text-align: right;
+    font-size: 72px;
+    font-weight: 700;
+    width: 210px;
+    letter-spacing: 0.04em;
+}
+
+/* Strich */
+.col-3-sep {
+    text-align: center;
+    font-size: 52px;
+    font-weight: 300;
+    width: 80px;
+    color: rgba(255, 255, 255, 0.30);
+    padding: 0 8px;
+}
+
+/* Endzeit */
+.col-4-end {
+    text-align: left;
+    font-size: 72px;
+    font-weight: 700;
+    width: 210px;
+    letter-spacing: 0.04em;
+}
+
+/* Einheit (UHR) */
+.col-5-unit {
+    text-align: left;
+    font-size: 16px;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding-left: 18px;
+    padding-top: 22px;
+    opacity: 0.55;
+    letter-spacing: 0.18em;
+    color: var(--clr-text-muted);
+}
+
+/* Geschlossen-Label */
+.oh-table tr.geschlossen .col-2-start {
+    font-size: 24px;
+    letter-spacing: 4px;
+    color: rgba(255, 59, 48, 0.65);
+    text-transform: uppercase;
+}
+
+/* ── Footer ────────────────────────────────────────────────── */
+.oh-footer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    width: 100%;
+    padding: 8px 0;
+}
+.oh-footer-line {
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(103, 148, 103, 0.40));
+}
+.oh-footer-line.right {
+    background: linear-gradient(90deg, rgba(103, 148, 103, 0.40), transparent);
+}
+.oh-footer-inner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--clr-green);
+    text-transform: uppercase;
+    letter-spacing: 6px;
+    white-space: nowrap;
+}
+.oh-footer-dot {
+    width: 9px;
+    height: 9px;
+    background: var(--clr-green);
+    border-radius: 50%;
+    box-shadow: 0 0 12px var(--clr-green);
+    flex-shrink: 0;
+    animation: oh-pulse 2.5s ease-in-out infinite;
+}
+@keyframes oh-pulse {
+    0%, 100% { opacity: 1;   box-shadow: 0 0 12px var(--clr-green); }
+    50%       { opacity: 0.5; box-shadow: 0 0 4px  var(--clr-green); }
+}
+
+/* ── Hintergrund-Bild (Elementor full-screen Section) ───────── */
+/* Wenn Elementor ein BG-Bild auf die Section setzt */
+.elementor-section.oh-bg-section,
+.elementor-section.oh-bg-section > .elementor-container {
+    min-height: var(--viewport-p-h) !important;
+}
+
+/* Overlay-Gradient damit Text immer lesbar ist */
+.oh-bg-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background:
+        linear-gradient(
+            to bottom,
+            rgba(0, 0, 0, 0.35) 0%,
+            rgba(0, 0, 0, 0.10) 30%,
+            rgba(0, 0, 0, 0.10) 55%,
+            rgba(0, 0, 0, 0.65) 80%,
+            rgba(0, 0, 0, 0.85) 100%
+        );
+    pointer-events: none;
+}
+
+/* ── Animationen ────────────────────────────────────────────── */
+@keyframes fadeUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.oh-headline { animation: fadeUp 0.7s ease 0.1s both; }
+.oh-glass    { animation: fadeUp 0.7s ease 0.3s both; }
+.oh-footer   { animation: fadeUp 0.7s ease 0.5s both; }
+
+
+
+
+
+
+
+
+

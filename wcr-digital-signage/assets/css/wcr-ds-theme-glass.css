@@ -1,0 +1,109 @@
+/* =============================================================
+   WCR Digital Signage — Theme: GLASS
+   Stil: Dark Glassmorphism · Blur · Subtile Tiefe
+   Palette: #679467 · #019ee3 · Weiß · Schwarz · Grau
+   ============================================================= */
+
+:root {
+    --clr-green:        #679467;
+    --clr-green-dim:    rgba(103, 148, 103, 0.70);
+    --clr-green-glow:   rgba(103, 148, 103, 0.08);
+    --clr-blue:         #019ee3;
+    --clr-blue-dim:     rgba(1, 158, 227, 0.18);
+    --clr-bg:           #080808;
+    --clr-bg-dark:      #0d0d0d;
+    --clr-text:         #eeeeee;
+    --clr-text-muted:   #7a8a8a;
+    --clr-border:       rgba(255, 255, 255, 0.09);
+    --blur-glass:       blur(20px) saturate(140%);
+    --radius-card:      18px;
+    --radius-large:     26px;
+}
+
+body { background: var(--clr-bg); }
+body::before {
+    background:
+        radial-gradient(ellipse 60% 60% at 15% 50%, rgba(103,148,103,0.07) 0%, transparent 70%),
+        radial-gradient(ellipse 40% 40% at 85% 20%, rgba(1,158,227,0.05)   0%, transparent 60%);
+}
+
+.glass, .k-card, .ds-card {
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: var(--blur-glass);
+    -webkit-backdrop-filter: var(--blur-glass);
+    border: 1px solid rgba(255,255,255,0.09);
+    box-shadow: none;
+}
+.k-card::before, .ds-card::before {
+    content: ''; position: absolute;
+    top: 0; left: 10%; right: 10%; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent);
+}
+.k-card::after, .ds-card::after {
+    content: ''; position: absolute;
+    bottom: 0; left: 25%; right: 25%; height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(103,148,103,0.55), transparent);
+}
+
+.ds-header { background: transparent; }
+.ds-header-line       { background: linear-gradient(90deg, transparent, rgba(103,148,103,0.35)) !important; }
+.ds-header-line.right { background: linear-gradient(90deg, rgba(103,148,103,0.35), transparent) !important; }
+.ds-header-inner { color: var(--clr-green); }
+.ds-dot { background: var(--clr-green); box-shadow: 0 0 10px var(--clr-green); }
+.ds-hr  { background: linear-gradient(90deg, transparent, var(--clr-green), transparent); }
+h3.ds-subhead { color: var(--clr-green-dim); }
+
+.produkt { color: var(--clr-text); }
+.preis   { color: #ffffff; }
+.euro    { color: rgba(255,255,255,0.30); }
+
+.k-img-wrap  { background: rgba(103,148,103,0.07); border: 1px solid rgba(103,148,103,0.18); }
+.k-name      { color: rgba(238,238,238,0.9); }
+.k-price     { color: #fff; }
+.k-price .euro { color: rgba(255,255,255,0.28); }
+
+.food-kat-header  { background: rgba(255,255,255,0.04); border-left: 4px solid var(--clr-green); border-radius: 12px; }
+.food-kat-name    { color: var(--clr-green); }
+.food-kat-line    { background: linear-gradient(90deg, rgba(103,148,103,0.25), transparent) !important; }
+.food-kat-badge   { color: #e05c5c; background: rgba(224,92,92,0.10); border-color: rgba(224,92,92,0.30); }
+
+.detail-card {
+    background: rgba(10,16,30,0.60);
+    backdrop-filter: var(--blur-glass); -webkit-backdrop-filter: var(--blur-glass);
+    border: 1px solid var(--clr-border); border-radius: var(--radius-card);
+}
+.dc-label  { color: var(--clr-text-muted); }
+.hero-desc { color: var(--clr-blue); }
+.fc-day    { color: var(--clr-blue); }
+
+#wcr-windmap-wrap .glass {
+    background: rgba(8,12,24,0.60);
+    backdrop-filter: var(--blur-glass); -webkit-backdrop-filter: var(--blur-glass);
+    border-color: var(--clr-border);
+}
+#wcr-windmap-wrap #kn-box                     { border-top: 2px solid var(--clr-blue); }
+#wcr-windmap-wrap #spot-header .dot           { background: var(--clr-blue); box-shadow: 0 0 10px var(--clr-blue), 0 0 28px rgba(1,158,227,0.3); }
+#wcr-windmap-wrap #tc-forecast                { color: var(--clr-blue); }
+#wcr-windmap-wrap #tc-badge                   { background: rgba(1,158,227,0.15); border-color: rgba(1,158,227,0.35); color: var(--clr-blue); }
+#wcr-windmap-wrap #tl-fill                    { background: linear-gradient(90deg, rgba(1,158,227,0.4), var(--clr-blue)); }
+#wcr-windmap-wrap #tl-cursor                  { background: var(--clr-blue); box-shadow: 0 0 8px var(--clr-blue); }
+#wcr-windmap-wrap #tl-cursor::before          { background: var(--clr-blue); box-shadow: 0 0 10px var(--clr-blue); }
+#wcr-windmap-wrap #tl-current-time span:first-child { background: rgba(1,158,227,0.15); border-color: rgba(1,158,227,0.35); color: var(--clr-blue); }
+#wcr-windmap-wrap #wr-degs                    { color: var(--clr-blue); }
+.ds-live-dot { background: var(--clr-blue); box-shadow: 0 0 10px var(--clr-blue), 0 0 28px rgba(1,158,227,0.3); }
+
+.oh-glass {
+    background: radial-gradient(circle at top left,
+        rgba(103,148,103,0.28) 0%, rgba(1,158,227,0.14) 40%, rgba(0,0,0,0.45) 100%);
+    backdrop-filter: blur(28px) saturate(160%); -webkit-backdrop-filter: blur(28px) saturate(160%);
+    box-shadow: 0 40px 80px rgba(0,0,0,0.70), 0 0 0 1px rgba(255,255,255,0.25);
+}
+.oh-headline {
+    background: radial-gradient(circle at top left,
+        rgba(103,148,103,0.30) 0%, rgba(1,158,227,0.18) 45%, rgba(0,0,0,0.30) 100%);
+    backdrop-filter: blur(24px) saturate(150%); -webkit-backdrop-filter: blur(24px) saturate(150%);
+    box-shadow: 0 24px 60px rgba(0,0,0,0.65), 0 0 0 1px rgba(255,255,255,0.22);
+}
+.oh-headline::after { background: linear-gradient(90deg, transparent, var(--clr-green), transparent); }
+.oh-footer-inner    { color: var(--clr-green); }
+.oh-footer-dot      { background: var(--clr-green); box-shadow: 0 0 12px var(--clr-green); }
