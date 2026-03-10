@@ -16,14 +16,14 @@ jobs:
         uses: actions/checkout@v4
 
       # ── 1. WordPress Plugin ──
-      - name: Deploy Plugin via FTP/SFTP
+      - name: Deploy Plugin via FTPS
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          protocol: sftp
-          port: 22
+          protocol: ftps
+          port: 21
           local-dir: ./wcr-digital-signage/
           server-dir: /WebSpace/wordpress/wp-content/plugins/wcr-digital-signage/
           dangerous-clean-slate: false
@@ -37,14 +37,14 @@ jobs:
             **/*_old_*
 
       # ── 2. Standalone Backend ──
-      - name: Deploy Backend via FTP/SFTP
+      - name: Deploy Backend via FTPS
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          protocol: sftp
-          port: 22
+          protocol: ftps
+          port: 21
           local-dir: ./be/
           server-dir: /WebSpace/wordpress/be/
           dangerous-clean-slate: false
