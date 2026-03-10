@@ -22,8 +22,8 @@ jobs:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ftps
-          port: 21
+          protocol: ftps-legacy
+          port: 990
           local-dir: ./wcr-digital-signage/
           server-dir: /WebSpace/wordpress/wp-content/plugins/wcr-digital-signage/
           dangerous-clean-slate: false
@@ -43,8 +43,8 @@ jobs:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ftps
-          port: 21
+          protocol: ftps-legacy
+          port: 990
           local-dir: ./be/
           server-dir: /WebSpace/wordpress/be/
           dangerous-clean-slate: false
