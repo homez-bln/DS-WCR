@@ -342,8 +342,6 @@ add_action('rest_api_init', function() {
         ],
         [
             // POST: Geschützt – Backend-Brücke für Karten-Config-Speicherung
-            // HINWEIS: be/ctrl/obstacles.php nutzt diese Route noch
-            // TODO: Langfristig direkt WordPress-Options im Backend nutzen
             'methods'             => 'POST',
             'callback'            => function(WP_REST_Request $req) {
                 $secret = $req->get_param('wcr_secret') ?? '';
@@ -405,8 +403,6 @@ add_action('rest_api_init', function() {
        UTILITY-ROUTEN
     ══════════════════════════════════════════════════════════════════════════ */
 
-    // ── Single Item by ID (mit Stock-Filter) ──
-    // ZWECK: QR-Codes/Deeplinks zu einzelnen Produkten
     register_rest_route('wakecamp/v1', '/item/(?P<id>[0-9]+)', [
         'methods'             => 'GET',
         'callback'            => function($req) {
@@ -414,9 +410,7 @@ add_action('rest_api_init', function() {
             if (!$db) return new WP_Error('db_error', 'DB fehlgeschlagen', ['status' => 500]);
             $id       = (int) $req['id'];
             $tabellen = ['food', 'drinks', 'cable', 'camping', 'extra', 'ice'];
-            
             foreach ($tabellen as $tabelle) {
-                // NUR vorrätige Items zeigen (stock != 0)
                 $row = $db->get_row($db->prepare(
                     "SELECT nummer, produkt, preis, menge, typ 
                      FROM `$tabelle` 
@@ -430,8 +424,6 @@ add_action('rest_api_init', function() {
         'permission_callback' => '__return_true',
     ]);
 
-    // ── Ping / Health-Check ──
-    // ZWECK: Monitoring für Frontend-Systeme
     register_rest_route('wakecamp/v1', '/ping', [
         'methods'             => 'GET',
         'callback'            => function() {
@@ -448,20 +440,12 @@ add_action('rest_api_init', function() {
 
     /* ══════════════════════════════════════════════════════════════════════════
        🔒 GESCHÜTZTE VERWALTUNGS-ROUTEN
-       Nur für Backend-Admins mit WordPress manage_options Berechtigung
     ══════════════════════════════════════════════════════════════════════════ */
 
-    // ── DS-Settings (Design + Instagram-Config) ──
-    // 🔒 SICHERHEIT: NUR für WordPress-Admins
-    // ZWECK: Backend-Brücke für Settings-Verwaltung (bis Migration ins Backend)
-    // TODO: Langfristig komplett ins Backend (be/) verlagern
     register_rest_route('wakecamp/v1', '/ds-settings', [
         [
-            // GET: Lädt aktuelle Settings
-            // 🔒 WICHTIG: Zeigt sensible Daten wie Instagram-Token!
             'methods'             => 'GET',
             'callback'            => function(WP_REST_Request $req) {
-                // Instagram-Konfiguration laden
                 $ig_keys = [
                     'wcr_instagram_token', 'wcr_instagram_user_id', 'wcr_instagram_hashtags',
                     'wcr_instagram_excluded', 'wcr_instagram_location_label', 'wcr_instagram_cta_text',
@@ -473,7 +457,6 @@ add_action('rest_api_init', function() {
                 ];
                 $instagram = [];
                 foreach ($ig_keys as $k) $instagram[$k] = get_option($k, '');
-                
                 return rest_ensure_response([
                     'options'   => get_option('wcr_ds_options', []),
                     'theme'     => get_option('wcr_ds_theme', 'glass'),
@@ -481,19 +464,14 @@ add_action('rest_api_init', function() {
                 ]);
             },
             'permission_callback' => function(WP_REST_Request $req) {
-                // 🔒 NUR WordPress-Admins mit manage_options Berechtigung
-                // ODER mit gültigem Secret (für Backend-Zugriff)
                 $secret = $req->get_header('X-WCR-Secret') ?: $req->get_param('wcr_secret');
                 return current_user_can('manage_options') || ($secret === WCR_DS_API_SECRET);
             },
         ],
         [
-            // POST: Speichert Settings-Änderungen
-            // 🔒 WICHTIG: Kann Theme, Farben, Instagram-Config ändern!
             'methods'             => 'POST',
             'callback'            => function(WP_REST_Request $req) {
                 $action = $req->get_param('action') ?? '';
-
                 if ($action === 'theme') {
                     $theme = sanitize_text_field($req->get_param('theme') ?? '');
                     if (in_array($theme, ['glass', 'flat', 'aurora'], true))
@@ -540,69 +518,39 @@ add_action('rest_api_init', function() {
                 return new WP_Error('invalid_action', 'Unbekannte Action', ['status' => 400]);
             },
             'permission_callback' => function(WP_REST_Request $req) {
-                // 🔒 NUR WordPress-Admins mit manage_options Berechtigung
-                // ODER mit gültigem Secret (für Backend-Zugriff)
                 $secret = $req->get_param('wcr_secret') ?? '';
                 return current_user_can('manage_options') || ($secret === WCR_DS_API_SECRET);
             },
         ],
     ]);
 
-    // ── Options Read/Write Endpunkt (Generic Key-Value Store) ──
-    // 🔒 SICHERHEIT: NUR mit gültigem Secret (Backend-Zugriff)
-    // ZWECK: Generischer Zugriff auf wp_options für Backend-System
     register_rest_route('wakecamp/v1', '/options/(?P<key>[a-zA-Z0-9_-]+)', [
-        // GET: Liest eine einzelne wp_option
         'methods'             => 'GET',
         'callback'            => function(WP_REST_Request $req) {
-            $key = sanitize_key($req['key']);
+            $key   = sanitize_key($req['key']);
             $value = get_option($key, null);
-            
-            return rest_ensure_response([
-                'key'   => $key,
-                'value' => $value,
-                'found' => ($value !== null),
-            ]);
+            return rest_ensure_response(['key' => $key, 'value' => $value, 'found' => ($value !== null)]);
         },
         'permission_callback' => function(WP_REST_Request $req) {
-            // 🔒 NUR mit gültigem Secret (Backend-Zugriff)
             $secret = $req->get_header('X-WCR-Secret') ?: $req->get_param('wcr_secret');
             return ($secret === WCR_DS_API_SECRET);
         },
     ]);
 
     register_rest_route('wakecamp/v1', '/options', [
-        // POST: Schreibt/Aktualisiert eine wp_option
         'methods'             => 'POST',
         'callback'            => function(WP_REST_Request $req) {
             $key   = sanitize_key($req->get_param('key') ?? '');
-            $value = $req->get_param('value'); // Kann auch Array/null sein
-            
-            if (empty($key)) {
-                return new WP_Error('invalid_key', 'Key ist erforderlich', ['status' => 400]);
-            }
-            
-            // Wenn value === null → Option löschen
+            $value = $req->get_param('value');
+            if (empty($key)) return new WP_Error('invalid_key', 'Key ist erforderlich', ['status' => 400]);
             if ($value === null) {
                 $deleted = delete_option($key);
-                return rest_ensure_response([
-                    'ok'      => $deleted,
-                    'action'  => 'delete',
-                    'key'     => $key,
-                ]);
+                return rest_ensure_response(['ok' => $deleted, 'action' => 'delete', 'key' => $key]);
             }
-            
-            // Ansonsten: Option speichern/aktualisieren
-            $updated = update_option($key, $value);
-            
-            return rest_ensure_response([
-                'ok'     => true,
-                'action' => 'update',
-                'key'    => $key,
-            ]);
+            update_option($key, $value);
+            return rest_ensure_response(['ok' => true, 'action' => 'update', 'key' => $key]);
         },
         'permission_callback' => function(WP_REST_Request $req) {
-            // 🔒 NUR mit gültigem Secret (Backend-Zugriff)
             $secret = $req->get_param('wcr_secret') ?? '';
             return ($secret === WCR_DS_API_SECRET);
         },
@@ -613,14 +561,27 @@ add_action('rest_api_init', function() {
        Öffentlich – Daten bereits gefiltert durch WCR_Instagram Klasse
     ══════════════════════════════════════════════════════════════════════════ */
 
+    // ── Posts ──
     register_rest_route('wakecamp/v1', '/instagram', [
         'methods'             => 'GET',
         'callback'            => fn() => rest_ensure_response(WCR_Instagram::get_posts()),
         'permission_callback' => '__return_true',
     ]);
+
+    // ── Videos ──
     register_rest_route('wakecamp/v1', '/instagram/videos', [
         'methods'             => 'GET',
         'callback'            => fn() => rest_ensure_response(WCR_Instagram::get_videos()),
+        'permission_callback' => '__return_true',
+    ]);
+
+    // ── Status / Diagnose ──
+    // ✅ Fix #5: Frontend kann jetzt zwischen Token-Fehler und echtem leeren Feed unterscheiden
+    // Aufruf: GET /wp-json/wakecamp/v1/instagram/status
+    // Response: { token_set: true, uid_set: true, cache_ttl: 843, post_count: 8 }
+    register_rest_route('wakecamp/v1', '/instagram/status', [
+        'methods'             => 'GET',
+        'callback'            => fn() => rest_ensure_response(WCR_Instagram::get_status()),
         'permission_callback' => '__return_true',
     ]);
 
