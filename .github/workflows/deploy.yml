@@ -1,0 +1,52 @@
+name: Deploy to IONOS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── 1. WordPress Plugin ──
+      - name: Deploy Plugin via SFTP
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local_path: './wcr-digital-signage/*'
+          remote_path: '/WebSpace/wordpress/wp-content/plugins/wcr-digital-signage/'
+          sftp_only: true
+          delete_remote_files: true
+          args: '--exclude=node_modules/ --exclude=.git/ --exclude=.github/ --exclude=*.php_old --exclude=*.php_OLD --exclude=*_OLD_*'
+          port: 22
+
+      # ── 2. Standalone Backend ──
+      - name: Deploy Backend via SFTP
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local_path: './be/*'
+          remote_path: '/WebSpace/wordpress/be/'
+          sftp_only: true
+          delete_remote_files: true
+          args: '--exclude=node_modules/ --exclude=.git/ --exclude=.github/'
+          port: 22
+
+      - name: Deployment erfolgreich
+        run: |
+          echo "✅ Deploy abgeschlossen"
+          echo "📦 Plugin: /WebSpace/wordpress/wp-content/plugins/wcr-digital-signage/"
+          echo "🔧 Backend: /WebSpace/wordpress/be/"
+          echo "🗑️  Alte Dateien wurden entfernt"
+          echo "🔄 Server ist synchron mit Git"
