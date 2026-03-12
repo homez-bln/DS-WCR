@@ -1,19 +1,22 @@
 <?php
 /**
- * WCR Produkte Spotlight Shortcode
+ * WCR Produkte Spotlight Shortcode — v2 (dynamische Anzahl)
  *
  * Verwendung:
- *   [wcr_produkte id1="42" id2="17" id3="99"]
- *   [wcr_produkte id1="42" id2="17" id3="99" titel="Unsere Empfehlungen" table="food"]
+ *   [wcr_produkte ids="3010,3089,3162" table="food" titel="Burger-Grill"]
+ *   [wcr_produkte ids="10,20,30,40,50,60" table="drinks" titel="Getränke"]
+ *
+ *   Backward-kompatibel: id1/id2/id3 + img1/img2/img3 funktionieren weiterhin.
  *
  * Parameter:
- *   id1, id2, id3  – Datenbank-Nummer (Spalte `nummer`) der Produkte
- *   titel          – Überschrift (Standard: "Unsere Empfehlungen")
- *   table          – Optional: Tabelle eingrenzen (food, drinks, cable, camping, extra, ice)
- *   img1,img2,img3 – Optional: URL zum Produkt-Bild (zeigt Dampf-Effekt darunter)
- *   show_menge     – Optional: "1" zeigt Mengenangaben, sonst ausgeblendet (Standard: "0")
- *
- * Jede Card zeigt: [Bild + Dampf] · Produktname · Preis · [optional: Menge]
+ *   ids           – Komma-getrennte Produkt-Nummern (beliebige Anzahl)
+ *   id1…id9      – Legacy-Einzelparameter (rückwärtskompatibel)
+ *   titel         – Überschrift (Standard: "Unsere Empfehlungen")
+ *   table         – Optional: Tabelle eingrenzen (food, drinks, cable, camping, extra, ice)
+ *   imgs          – Komma-getrennte Bild-URLs passend zu ids
+ *   img1…img9    – Legacy-Einzelbilder
+ *   show_menge    – "1" zeigt Mengenangaben
+ *   cols          – Spaltenanzahl erzwingen (Standard: auto je nach Anzahl)
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
@@ -23,41 +26,69 @@ if ( ! function_exists( 'wcr_sc_produkte' ) ) {
     function wcr_sc_produkte( $atts ) {
 
         $atts = shortcode_atts( [
-            'id1'        => '',
-            'id2'        => '',
-            'id3'        => '',
+            'ids'        => '',
+            // Legacy id1–9
+            'id1'=>'','id2'=>'','id3'=>'','id4'=>'','id5'=>'',
+            'id6'=>'','id7'=>'','id8'=>'','id9'=>'',
             'titel'      => 'Unsere Empfehlungen',
             'table'      => '',
-            'img1'       => '',
-            'img2'       => '',
-            'img3'       => '',
-            'show_menge' => '0',  // Standard: ausgeblendet
+            'imgs'       => '',
+            // Legacy img1–9
+            'img1'=>'','img2'=>'','img3'=>'','img4'=>'','img5'=>'',
+            'img6'=>'','img7'=>'','img8'=>'','img9'=>'',
+            'show_menge' => '0',
+            'cols'       => '',   // '' = auto
         ], $atts, 'wcr_produkte' );
+
+        // ─ IDs sammeln ───────────────────────────────────
+        $raw_ids = [];
+        if ( ! empty( $atts['ids'] ) ) {
+            $raw_ids = array_map( 'trim', explode( ',', $atts['ids'] ) );
+        } else {
+            // Legacy id1–9
+            foreach ( ['id1','id2','id3','id4','id5','id6','id7','id8','id9'] as $k ) {
+                if ( ! empty( $atts[ $k ] ) ) $raw_ids[] = $atts[ $k ];
+            }
+        }
+        $raw_ids = array_values( array_filter( $raw_ids ) );
+        if ( empty( $raw_ids ) ) return '<!-- wcr_produkte: keine IDs -->';
+        $count = count( $raw_ids );
+
+        // ─ Bilder sammeln ─────────────────────────────────
+        $raw_imgs = [];
+        if ( ! empty( $atts['imgs'] ) ) {
+            $raw_imgs = array_map( 'trim', explode( ',', $atts['imgs'] ) );
+        } else {
+            foreach ( ['img1','img2','img3','img4','img5','img6','img7','img8','img9'] as $k ) {
+                $raw_imgs[] = $atts[ $k ] ?? '';
+            }
+        }
+
+        // ─ Auto-Spalten ──────────────────────────────────
+        if ( ! empty( $atts['cols'] ) && (int) $atts['cols'] > 0 ) {
+            $cols = (int) $atts['cols'];
+        } else {
+            // Auto: schöne Verteilung
+            $cols = match( true ) {
+                $count <= 2 => $count,
+                $count <= 4 => 2,
+                $count <= 6 => 3,
+                $count <= 8 => 4,
+                default     => 4,
+            };
+        }
 
         $show_menge = ( $atts['show_menge'] === '1' || $atts['show_menge'] === 'true' );
 
-        // ── Assets laden ──
-        wp_enqueue_style(
-            'wcr-produkte',
-            WCR_DS_URL . 'assets/css/wcr-produkte.css',
-            [],
-            WCR_DS_VERSION
-        );
-        wp_enqueue_script(
-            'wcr-produkte-js',
-            WCR_DS_URL . 'assets/js/wcr-produkte.js',
-            [],
-            WCR_DS_VERSION,
-            true
-        );
+        // ─ Assets ───────────────────────────────────────
+        wp_enqueue_style( 'wcr-produkte', WCR_DS_URL . 'assets/css/wcr-produkte.css', [], WCR_DS_VERSION );
+        wp_enqueue_script( 'wcr-produkte-js', WCR_DS_URL . 'assets/js/wcr-produkte.js', [], WCR_DS_VERSION, true );
 
-        // ── DB-Verbindung ──
+        // ─ DB ───────────────────────────────────────────
         $db = get_ionos_db_connection();
-
-        $erlaubte_tabellen = [ 'food', 'drinks', 'cable', 'camping', 'extra', 'ice' ];
-        $tabellen = ( ! empty( $atts['table'] ) && in_array( $atts['table'], $erlaubte_tabellen, true ) )
-            ? [ $atts['table'] ]
-            : $erlaubte_tabellen;
+        $erlaubte = [ 'food', 'drinks', 'cable', 'camping', 'extra', 'ice' ];
+        $tabellen = ( ! empty( $atts['table'] ) && in_array( $atts['table'], $erlaubte, true ) )
+            ? [ $atts['table'] ] : $erlaubte;
 
         $get_produkt = function( $nummer ) use ( $db, $tabellen ) {
             if ( ! $nummer || ! $db ) return null;
@@ -65,10 +96,7 @@ if ( ! function_exists( 'wcr_sc_produkte' ) ) {
             if ( $id <= 0 ) return null;
             foreach ( $tabellen as $tabelle ) {
                 $row = $db->get_row(
-                    $db->prepare(
-                        "SELECT produkt, preis, menge, typ FROM `$tabelle` WHERE nummer = %d LIMIT 1",
-                        $id
-                    ),
+                    $db->prepare( "SELECT produkt, preis, menge, typ FROM `$tabelle` WHERE nummer = %d LIMIT 1", $id ),
                     ARRAY_A
                 );
                 if ( $row ) return $row;
@@ -76,18 +104,12 @@ if ( ! function_exists( 'wcr_sc_produkte' ) ) {
             return null;
         };
 
-        $ids    = [ $atts['id1'],  $atts['id2'],  $atts['id3']  ];
-        $imgs   = [ $atts['img1'], $atts['img2'], $atts['img3'] ];
-        $produkte = [];
-        foreach ( $ids as $raw_id ) {
-            $produkte[] = $get_produkt( $raw_id );
-        }
-
-        $titel = esc_html( $atts['titel'] );
+        $produkte = array_map( $get_produkt, $raw_ids );
+        $titel    = esc_html( $atts['titel'] );
 
         ob_start();
         ?>
-        <div class="wcr-produkte-wrap">
+        <div class="wcr-produkte-wrap" data-cols="<?= (int)$cols ?>" data-count="<?= (int)$count ?>">
 
             <div class="wcr-produkte-header">
                 <div class="wcr-produkte-header-line"></div>
@@ -99,9 +121,9 @@ if ( ! function_exists( 'wcr_sc_produkte' ) ) {
                 <div class="wcr-produkte-header-line right"></div>
             </div>
 
-            <div class="wcr-produkte-grid">
+            <div class="wcr-produkte-grid" style="--wcr-cols:<?= (int)$cols ?>">
                 <?php foreach ( $produkte as $i => $p ) :
-                    $img_url = ! empty( $imgs[ $i ] ) ? esc_url( $imgs[ $i ] ) : '';
+                    $img_url = ! empty( $raw_imgs[ $i ] ) ? esc_url( $raw_imgs[ $i ] ) : '';
                 ?>
                 <div class="wcr-produkte-card<?php echo ( ! $p ) ? ' is-error' : ''; ?>">
 
@@ -109,7 +131,6 @@ if ( ! function_exists( 'wcr_sc_produkte' ) ) {
 
                         <?php if ( $img_url ) : ?>
                         <div class="wcr-produkte-img-wrap">
-                            <!-- Dampf-Partikel -->
                             <div class="wcr-steam">
                                 <span></span><span></span><span></span><span></span><span></span>
                             </div>
@@ -117,20 +138,15 @@ if ( ! function_exists( 'wcr_sc_produkte' ) ) {
                         </div>
                         <?php endif; ?>
 
-                        <div class="wcr-produkte-name">
-                            <?php echo esc_html( $p['produkt'] ?? '–' ); ?>
-                        </div>
-
+                        <div class="wcr-produkte-name"><?php echo esc_html( $p['produkt'] ?? '–' ); ?></div>
                         <div class="wcr-produkte-divider"></div>
-
                         <div class="wcr-produkte-preis">
                             <?php
                             $preis = isset( $p['preis'] ) && $p['preis'] !== null
-                                ? number_format( (float) $p['preis'], 2, ',', '.' )
-                                : '–';
+                                ? number_format( (float) $p['preis'], 2, ',', '.' ) : '–';
                             echo esc_html( $preis );
-                            if ( $p['preis'] !== null ) :
-                            ?><span class="wp-currency">€</span><?php endif; ?>
+                            if ( $p['preis'] !== null ) : ?><span class="wp-currency">€</span><?php endif;
+                            ?>
                         </div>
 
                         <?php if ( $show_menge && ! empty( $p['menge'] ) ) : ?>
@@ -143,9 +159,7 @@ if ( ! function_exists( 'wcr_sc_produkte' ) ) {
                         <?php endif; ?>
 
                     <?php else : ?>
-
                         <div class="wcr-produkte-name">Produkt nicht gefunden</div>
-
                     <?php endif; ?>
 
                 </div>
