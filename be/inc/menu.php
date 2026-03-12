@@ -1,7 +1,8 @@
 <?php
 /**
- * inc/menu.php v11 — Touch-optimierte Kachelleiste
- * Fix oben, mehrere Zeilen, große Tap-Flächen
+ * inc/menu.php v12 — Helle Touch-Leiste + Burger-Menü
+ * Links: Haupt-Buttons (Listen-Seiten)
+ * Rechts: Burger → Overlay mit dem Rest
  */
 $_currentScript = basename($_SERVER['PHP_SELF']);
 $_currentQuery  = $_SERVER['QUERY_STRING'] ?? '';
@@ -18,127 +19,314 @@ if (!function_exists('_wcr_menu_active')) {
     }
 }
 
-$_menuItems = [
-    ['⏱',  'Open',        'ctrl/times.php',          'view_times'   ],
-    ['🎬',  'Kino',        'ctrl/kino.php',           'edit_content' ],
-    ['📸',  'Media',       'ctrl/media.php',          'view_media'   ],
-    ['🥤',  'Getränke',    'ctrl/drinks.php',         'edit_products'],
-    ['🍔',  'Essen',       'ctrl/food.php',           'edit_products'],
-    ['🍦',  'Eis',         'ctrl/list.php?t=ice',     'edit_products'],
-    ['🪝',  'Cable',       'ctrl/list.php?t=cable',   'edit_products'],
-    ['⛺',  'Camping',     'ctrl/list.php?t=camping', 'edit_products'],
-    ['➕',  'Extra',       'ctrl/list.php?t=extra',   'edit_products'],
-    ['🗺',  'Obstacles',   'ctrl/obstacles.php',      'edit_content' ],
-    ['💻',  'DS-Seiten',   'ctrl/ds-seiten.php',      'view_ds'      ],
-    ['⚙️',  'DS Control',  'ctrl/ds-settings.php',    'view_ds'      ],
-    ['📺',  'piSignage',   'ctrl/pisignage.php',      'view_ds'      ],
-    ['👥',  'Benutzer',    'ctrl/users.php',          'manage_users' ],
-    ['🔐',  'Rechte',      'ctrl/permissions.php',    null           ],
+// Haupt-Buttons (immer sichtbar, große Tap-Flächen)
+$_mainItems = [
+    ['⏱',  'Open',      'ctrl/times.php',          'view_times'   ],
+    ['🥤',  'Getränke',  'ctrl/drinks.php',         'edit_products'],
+    ['🍔',  'Essen',     'ctrl/food.php',           'edit_products'],
+    ['🍦',  'Eis',       'ctrl/list.php?t=ice',     'edit_products'],
+    ['🪝',  'Cable',     'ctrl/list.php?t=cable',   'edit_products'],
+    ['⛺',  'Camping',   'ctrl/list.php?t=camping', 'edit_products'],
+    ['➕',  'Extra',     'ctrl/list.php?t=extra',   'edit_products'],
 ];
+
+// Burger-Menü (alle anderen)
+$_burgerItems = [
+    ['🎬',  'Kino',         'ctrl/kino.php',           'edit_content' ],
+    ['📸',  'Media',        'ctrl/media.php',          'view_media'   ],
+    ['🗺',  'Obstacles',    'ctrl/obstacles.php',      'edit_content' ],
+    ['💻',  'DS-Seiten',    'ctrl/ds-seiten.php',      'view_ds'      ],
+    ['⚙️',  'DS Control',   'ctrl/ds-settings.php',    'view_ds'      ],
+    ['📺',  'piSignage',    'ctrl/pisignage.php',      'view_ds'      ],
+    ['👥',  'Benutzer',     'ctrl/users.php',          'manage_users' ],
+    ['🔐',  'Rechte',       'ctrl/permissions.php',    null           ],
+];
+
+// Ist die aktive Seite im Burger-Menü?
+$_burgerActive = false;
+foreach ($_burgerItems as [$i,$l,$href,$p]) {
+    if (_wcr_menu_active($href, $_currentScript, $_currentQuery)) { $_burgerActive = true; break; }
+}
 
 require_once __DIR__ . '/design-tokens.php';
 ?>
 <link rel="stylesheet" href="/be/inc/style.css">
 
 <div class="nav-wrap">
-  <div class="nav-tiles">
 
-    <a href="/be/index.php" class="nav-tile <?= $_currentScript === 'index.php' ? 'active' : '' ?>">
-      <span class="nt-icon">🏠</span>
-      <span class="nt-label">Start</span>
+  <!-- Haupt-Buttons -->
+  <div class="nav-main">
+
+    <a href="/be/index.php" class="nav-btn nav-home-btn <?= $_currentScript==='index.php'?'active':'' ?>">
+      <span class="nb-icon">🏠</span>
+      <span class="nb-label">Start</span>
     </a>
 
-    <?php foreach ($_menuItems as [$icon, $label, $href, $perm]):
-      if ($perm === null) {
-        if (!wcr_is_cernal()) continue;
-      } elseif (!wcr_can($perm)) {
-        continue;
-      }
+    <?php foreach ($_mainItems as [$icon,$label,$href,$perm]):
+      if ($perm && !wcr_can($perm)) continue;
       $active = _wcr_menu_active($href, $_currentScript, $_currentQuery);
     ?>
-    <a href="/be/<?= $href ?>" class="nav-tile <?= $active ? 'active' : '' ?>">
-      <span class="nt-icon"><?= $icon ?></span>
-      <span class="nt-label"><?= htmlspecialchars($label) ?></span>
+    <a href="/be/<?= $href ?>" class="nav-btn <?= $active?'active':'' ?>">
+      <span class="nb-icon"><?= $icon ?></span>
+      <span class="nb-label"><?= htmlspecialchars($label) ?></span>
     </a>
     <?php endforeach; ?>
 
-    <div class="nav-tile-spacer"></div>
+  </div>
 
-    <div class="nav-tile nav-user-tile">
-      <span class="nt-icon">👤</span>
-      <span class="nt-label"><?= wcr_role_badge() ?></span>
+  <!-- Rechte Seite: User + Burger -->
+  <div class="nav-right">
+    <span class="nav-user-badge"><?= wcr_role_badge() ?></span>
+    <button class="nav-burger <?= $_burgerActive?'burger-active':'' ?>" id="nav-burger-btn" type="button" aria-label="Menü">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+
+</div>
+
+<!-- Burger Overlay -->
+<div class="burger-overlay" id="burger-overlay">
+  <div class="burger-panel" id="burger-panel">
+    <div class="burger-head">
+      <span class="burger-title">Menü</span>
+      <button class="burger-close" id="burger-close" type="button">✕</button>
     </div>
+    <div class="burger-items">
+      <?php foreach ($_burgerItems as [$icon,$label,$href,$perm]):
+        if ($perm === null) { if (!wcr_is_cernal()) continue; }
+        elseif (!wcr_can($perm)) continue;
+        $active = _wcr_menu_active($href, $_currentScript, $_currentQuery);
+      ?>
+      <a href="/be/<?= $href ?>" class="burger-item <?= $active?'active':'' ?>">
+        <span class="bi-icon"><?= $icon ?></span>
+        <span class="bi-label"><?= htmlspecialchars($label) ?></span>
+      </a>
+      <?php endforeach; ?>
 
-    <a href="/be/logout.php" class="nav-tile nav-logout-tile">
-      <span class="nt-icon">🚪</span>
-      <span class="nt-label">Logout</span>
-    </a>
-
+      <div class="burger-divider"></div>
+      <a href="/be/logout.php" class="burger-item burger-logout">
+        <span class="bi-icon">🚪</span>
+        <span class="bi-label">Logout</span>
+      </a>
+    </div>
   </div>
 </div>
 
 <style>
+/* ── Wrapper ─────────────────────────────────────────── */
 .nav-wrap {
-  position: sticky;
-  top: 0;
-  z-index: 999;
-  background: var(--bg-nav, #111827);
-  border-bottom: 2px solid rgba(255,255,255,.08);
-  box-shadow: 0 3px 14px rgba(0,0,0,.28);
-  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 24px;
+  flex-wrap: wrap;
 }
-.nav-tiles {
+
+/* ── Haupt-Button-Leiste ──────────────────────────────── */
+.nav-main {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
+  flex: 1;
 }
-.nav-tile {
+
+/* ── Einzel-Button ────────────────────────────────────── */
+.nav-btn {
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 9px 16px;
+  padding: 10px 16px;
   min-height: 44px;
   border-radius: 10px;
-  background: rgba(255,255,255,.06);
+  background: var(--bg-body);
   text-decoration: none;
-  color: rgba(255,255,255,.75);
-  font-size: 13px;
+  color: var(--text-main);
+  font-size: 14px;
   font-weight: 600;
   white-space: nowrap;
-  cursor: pointer;
-  border: 1.5px solid transparent;
+  border: 1.5px solid var(--border-light);
   transition: background .15s, border-color .15s, color .15s, transform .1s;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
+  cursor: pointer;
 }
-.nav-tile:hover  { background: rgba(255,255,255,.12); color: #fff; }
-.nav-tile:active { transform: scale(.96); background: rgba(255,255,255,.18); }
-.nav-tile.active {
-  background: rgba(1,158,227,.18);
-  border-color: rgba(1,158,227,.5);
-  color: #4fc3f7;
+.nav-btn:hover       { background: var(--border-light); border-color: var(--border); }
+.nav-btn:active      { transform: scale(.96); background: var(--border); }
+.nav-btn.active {
+  background: rgba(var(--primary-rgb), .10);
+  border-color: rgba(var(--primary-rgb), .35);
+  color: var(--primary);
 }
-.nt-icon  { font-size: 18px; line-height: 1; flex-shrink: 0; }
-.nt-label { line-height: 1.2; }
-.nav-tile-spacer { flex: 1; min-width: 10px; }
-.nav-user-tile {
-  background: transparent;
-  border-color: transparent;
-  color: rgba(255,255,255,.4);
-  font-size: 12px;
-  cursor: default;
+.nav-home-btn { font-weight: 700; }
+.nb-icon  { font-size: 17px; line-height: 1; flex-shrink: 0; }
+.nb-label { line-height: 1.2; }
+
+/* ── Rechts: User + Burger ────────────────────────────── */
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
 }
-.nav-user-tile:hover { background: transparent; color: rgba(255,255,255,.4); }
-.nav-logout-tile {
-  background: rgba(231,76,60,.12);
-  border-color: rgba(231,76,60,.25);
-  color: rgba(255,130,120,.85);
+.nav-user-badge { font-size: 12px; }
+
+/* ── Burger-Button ───────────────────────────────────── */
+.nav-burger {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  width: 44px;
+  height: 44px;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--bg-body);
+  border: 1.5px solid var(--border-light);
+  cursor: pointer;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  transition: background .15s, border-color .15s;
 }
-.nav-logout-tile:hover { background: rgba(231,76,60,.22); color: #ff6b6b; border-color: rgba(231,76,60,.5); }
-@media (max-width: 600px) {
-  .nav-wrap { padding: 8px 10px; }
-  .nav-tile  { padding: 8px 12px; font-size: 12px; }
-  .nt-icon   { font-size: 16px; }
+.nav-burger span {
+  display: block;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--text-main);
+  transition: background .15s;
+}
+.nav-burger:hover   { background: var(--border-light); border-color: var(--border); }
+.nav-burger:active  { background: var(--border); }
+.nav-burger.burger-active {
+  background: rgba(var(--primary-rgb),.10);
+  border-color: rgba(var(--primary-rgb),.35);
+}
+.nav-burger.burger-active span { background: var(--primary); }
+
+/* ── Overlay ──────────────────────────────────────────── */
+.burger-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.25);
+  backdrop-filter: blur(3px);
+  z-index: 1000;
+  animation: overlayIn .2s ease;
+}
+.burger-overlay.open { display: block; }
+@keyframes overlayIn { from{opacity:0} to{opacity:1} }
+
+/* ── Panel (rechts einschießend) ────────────────────────── */
+.burger-panel {
+  position: absolute;
+  top: 0; right: 0;
+  width: 280px;
+  max-width: 90vw;
+  height: 100%;
+  background: var(--bg-card);
+  box-shadow: -4px 0 24px rgba(0,0,0,.15);
+  display: flex;
+  flex-direction: column;
+  animation: panelIn .22s cubic-bezier(.4,0,.2,1);
+  overflow-y: auto;
+}
+@keyframes panelIn { from{transform:translateX(100%)} to{transform:translateX(0)} }
+
+.burger-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
+}
+.burger-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+.burger-close {
+  width: 32px; height: 32px;
+  border: none;
+  background: var(--bg-body);
+  border-radius: 8px;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted);
+  transition: background .15s;
+}
+.burger-close:hover { background: var(--border-light); color: var(--text-main); }
+
+/* ── Burger-Items ─────────────────────────────────────── */
+.burger-items {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+.burger-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  min-height: 48px;
+  border-radius: 10px;
+  text-decoration: none;
+  color: var(--text-main);
+  font-size: 15px;
+  font-weight: 500;
+  border: 1.5px solid transparent;
+  transition: background .13s, border-color .13s, color .13s;
+  -webkit-tap-highlight-color: transparent;
+}
+.burger-item:hover  { background: var(--bg-body); }
+.burger-item:active { background: var(--border-light); transform: scale(.98); }
+.burger-item.active {
+  background: rgba(var(--primary-rgb),.08);
+  border-color: rgba(var(--primary-rgb),.25);
+  color: var(--primary);
+  font-weight: 600;
+}
+.bi-icon  { font-size: 20px; flex-shrink: 0; }
+.bi-label { flex: 1; }
+.burger-divider {
+  height: 1px;
+  background: var(--border-light);
+  margin: 8px 0;
+}
+.burger-logout {
+  color: var(--danger);
+  margin-top: auto;
+}
+.burger-logout:hover { background: rgba(var(--danger-rgb),.06); }
+
+/* ── Responsive ───────────────────────────────────────── */
+@media (max-width:600px) {
+  .nav-wrap { padding: 8px 12px; }
+  .nav-btn  { padding: 9px 13px; font-size: 13px; }
+  .nb-icon  { font-size: 15px; }
 }
 </style>
+
+<script>
+(function(){
+  const overlay = document.getElementById('burger-overlay');
+  const btn     = document.getElementById('nav-burger-btn');
+  const close   = document.getElementById('burger-close');
+
+  function open()  { overlay.classList.add('open');    btn.setAttribute('aria-expanded','true');  document.body.style.overflow='hidden'; }
+  function shut()  { overlay.classList.remove('open'); btn.setAttribute('aria-expanded','false'); document.body.style.overflow=''; }
+
+  btn.addEventListener('click', function(){ overlay.classList.contains('open') ? shut() : open(); });
+  close.addEventListener('click', shut);
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) shut(); });
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') shut(); });
+})();
+</script>
