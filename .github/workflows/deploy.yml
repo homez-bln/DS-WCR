@@ -9,53 +9,28 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 1
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ── 1. WordPress Plugin ──
-      - name: Deploy Plugin via FTPS
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+      - name: Deploy via SFTP
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ftps-legacy
-          port: 990
-          local-dir: ./wcr-digital-signage/
-          server-dir: /WebSpace/wordpress/wp-content/plugins/wcr-digital-signage/
-          dangerous-clean-slate: false
-          exclude: |
-            **/.git*
-            **/.git*/**
-            **/node_modules/**
-            **/*.php_old
-            **/*.php_OLD
-            **/*_OLD_*
-            **/*_old_*
-
-      # ── 2. Standalone Backend ──
-      - name: Deploy Backend via FTPS
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ftps-legacy
-          port: 990
-          local-dir: ./be/
-          server-dir: /WebSpace/wordpress/be/
-          dangerous-clean-slate: false
-          exclude: |
-            **/.git*
-            **/.git*/**
-            **/node_modules/**
+          local_path: './wcr-digital-signage/*'
+          remote_path: '/WebSpace/wordpress/wp-content/plugins/wcr-digital-signage/'
+          sftp_only: true
+          delete_remote_files: true
+          args: '--exclude=node_modules/ --exclude=.git/ --exclude=.github/'
+          port: 22
 
       - name: Deployment erfolgreich
         run: |
           echo "✅ Deploy abgeschlossen"
-          echo "📦 Plugin: /WebSpace/wordpress/wp-content/plugins/wcr-digital-signage/"
-          echo "🔧 Backend: /WebSpace/wordpress/be/"
+          echo "📦 Plugin: wcr-digital-signage/"
+          echo "🗑️ Alte Dateien wurden entfernt"
           echo "🔄 Server ist synchron mit Git"
