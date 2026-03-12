@@ -1,6 +1,10 @@
 <?php
 /**
- * inc/menu.php v14.2 — Apple-Style Pastell-Kacheln + Dark-Mode-Toggle
+ * inc/menu.php v15 — Einheitliche Kategoriefarben
+ * 🟢 Grün  = Produkte / Öffnungszeiten
+ * 🔵 Blau  = DS
+ * 🟡 Gelb  = Media
+ * 🔴 Rot   = Verwaltung
  */
 $_currentScript = basename($_SERVER['PHP_SELF']);
 $_currentQuery  = $_SERVER['QUERY_STRING'] ?? '';
@@ -27,39 +31,65 @@ $_mainItems = [
     ['➕',  'Extra',     'ctrl/list.php?t=extra',   'edit_products'],
 ];
 
+// Farb-Konstanten — eine Quelle der Wahrheit
+// Grün-Familie
+define('C_GREEN_1', ['#d4f5d4','#1a7a1a']); // Öffnungszeiten
+define('C_GREEN_2', ['#d6f7dc','#1a6b30']); // Getränke
+define('C_GREEN_3', ['#c8f5cf','#1f7a3a']); // Essen
+define('C_GREEN_4', ['#d8f5e4','#196640']); // Eis
+define('C_GREEN_5', ['#cef5e0','#1a7050']); // Cable
+define('C_GREEN_6', ['#d2f7e6','#1a6b48']); // Camping
+define('C_GREEN_7', ['#d0f5db','#1f6b35']); // Extra
+
+// Blau-Familie
+define('C_BLUE_1',  ['#d6eaff','#0a5899']); // DS-Seiten
+define('C_BLUE_2',  ['#cce0ff','#0a4f8a']); // DS Control
+define('C_BLUE_3',  ['#d0e8ff','#0c5280']); // piSignage
+
+// Gelb/Orange-Familie
+define('C_YELLOW_1',['#fff3d0','#a07010']); // Media
+define('C_YELLOW_2',['#ffedc4','#a06010']); // Kino
+define('C_YELLOW_3',['#ffe8c8','#a05810']); // Obstacles
+define('C_YELLOW_4',['#ffeac0','#9a5810']); // Instagram
+define('C_YELLOW_5',['#fff0c8','#9a6808']); // Spotify
+
+// Rot/Pink-Familie
+define('C_RED_1',   ['#ffd6d6','#a02020']); // Benutzer
+define('C_RED_2',   ['#f5d4d4','#8a1a1a']); // Rechte
+
 $_burgerCategories = [
     [
         'label' => 'DS',
         'icon'  => '💻',
         'items' => [
-            ['💻', 'DS-Seiten',   'ctrl/ds-seiten.php',   'view_ds',  ['#ede0ff','#6b2fb5']],
-            ['⚙️', 'DS Control',  'ctrl/ds-settings.php', 'view_ds',  ['#ffd6f5','#a0238a']],
+            ['💻', 'DS-Seiten',   'ctrl/ds-seiten.php',   'view_ds',  C_BLUE_1],
+            ['⚙️', 'DS Control',  'ctrl/ds-settings.php', 'view_ds',  C_BLUE_2],
         ],
     ],
     [
         'label' => 'Media',
         'icon'  => '🎨',
         'items' => [
-            ['📸', 'Media',      'ctrl/media.php',       'view_media',   ['#ffecd0','#b56a10']],
-            ['🎬', 'Kino',       'ctrl/kino.php',        'edit_content', ['#d0e8ff','#1a6fb5']],
-            ['🗺', 'Obstacles',  'ctrl/obstacles.php',   'edit_content', ['#d4f5d4','#1a7a1a']],
+            ['📸', 'Media',      'ctrl/media.php',       'view_media',   C_YELLOW_1],
+            ['🎬', 'Kino',       'ctrl/kino.php',        'edit_content', C_YELLOW_2],
+            ['🗺', 'Obstacles',  'ctrl/obstacles.php',   'edit_content', C_YELLOW_3],
         ],
     ],
     [
         'label' => 'API',
         'icon'  => '🔌',
         'items' => [
-            ['📺', 'piSignage',  'ctrl/pisignage.php',   'view_ds',      ['#cce8ff','#0a5899']],
-            ['📸', 'Instagram',  'ctrl/instagram.php',   'view_ds',      ['#ffd6d6','#c0241c']],
-            ['🎵', 'Spotify',    'ctrl/spotify.php',     'manage_users', ['#d4f7e0','#0f7a3a']],
+            ['📺', 'piSignage',  'ctrl/pisignage.php',   'view_ds',      C_BLUE_3],
+            ['📸', 'Instagram',  'ctrl/instagram.php',   'view_ds',      C_YELLOW_4],
+            ['🎵', 'Spotify',    'ctrl/spotify.php',     'manage_users', C_YELLOW_5],
         ],
     ],
     [
         'label' => 'Verwaltung',
         'icon'  => '👤',
         'items' => [
-            ['👥', 'Benutzer',   'ctrl/users.php',          'manage_users', ['#d6f4ff','#0a7a99']],
-            ['🔐', 'Rechte',     'ctrl/permissions.php',    null,           ['#e8e8e8','#4a4a4a']],
+            ['👥', 'Benutzer',   'ctrl/users.php',          'manage_users', C_RED_1],
+            ['🔐', 'Rechte',     'ctrl/permissions.php',    null,           C_RED_2],
         ],
     ],
 ];
@@ -124,11 +154,10 @@ require_once __DIR__ . '/design-tokens.php';
 
     <div class="tile-header">
       <div class="tile-header-left">
-        <div class="tile-sf-icon"></div>
+        <div class="tile-sf-icon"></div>
         <span class="tile-header-title">Menü</span>
       </div>
       <div class="tile-header-right">
-        <!-- Dark Mode Toggle -->
         <button class="dm-toggle" id="dm-toggle" type="button" aria-label="Dark Mode umschalten" title="Dark Mode">
           <span class="dm-icon" id="dm-icon">🌙</span>
         </button>
@@ -203,7 +232,6 @@ require_once __DIR__ . '/design-tokens.php';
 [data-theme="dark"] .tile-panel{background:rgba(28,28,30,.97);border-left-color:rgba(255,255,255,.08);}
 @keyframes tPanIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
 
-/* Header */
 .tile-header{display:flex;align-items:center;justify-content:space-between;padding:20px 28px 18px;border-bottom:1px solid rgba(0,0,0,.08);flex-shrink:0;background:rgba(255,255,255,.8);transition:background .3s,border-color .3s;}
 [data-theme="dark"] .tile-header{background:rgba(44,44,46,.95);border-bottom-color:rgba(255,255,255,.08);}
 .tile-header-left{display:flex;align-items:center;gap:10px;}
@@ -212,7 +240,6 @@ require_once __DIR__ . '/design-tokens.php';
 .tile-header-title{font-size:18px;font-weight:700;color:#1c1c1e;letter-spacing:-.3px;font-family:-apple-system,system-ui,sans-serif;transition:color .3s;}
 [data-theme="dark"] .tile-header-title{color:#f5f5f7;}
 
-/* Dark Mode Toggle Button */
 .dm-toggle{width:36px;height:36px;border:none;background:rgba(0,0,0,.06);border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .2s,transform .15s;flex-shrink:0;}
 .dm-toggle:hover{background:rgba(0,0,0,.12);transform:rotate(15deg);}
 .dm-toggle:active{transform:scale(.9);}
@@ -225,23 +252,19 @@ require_once __DIR__ . '/design-tokens.php';
 [data-theme="dark"] .tile-close{background:rgba(255,255,255,.10);color:#98989d;}
 [data-theme="dark"] .tile-close:hover{background:rgba(255,255,255,.18);color:#f5f5f7;}
 
-/* Scroll */
 .tile-scroll{flex:1;overflow-y:auto;padding:20px 28px 28px;display:flex;flex-direction:column;gap:24px;}
 .tile-scroll::-webkit-scrollbar{width:4px;}
 .tile-scroll::-webkit-scrollbar-thumb{background:rgba(0,0,0,.15);border-radius:4px;}
 [data-theme="dark"] .tile-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);}
 
-/* Kategorie */
 .tile-category{display:flex;flex-direction:column;gap:10px;}
 .tile-cat-label{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#8e8e93;font-family:-apple-system,system-ui,sans-serif;padding-bottom:2px;border-bottom:1px solid rgba(0,0,0,.07);}
 [data-theme="dark"] .tile-cat-label{color:#636366;border-bottom-color:rgba(255,255,255,.07);}
 .tile-cat-icon{font-size:14px;}
 
-/* Grid */
 .tile-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
 @media(max-width:600px){.tile-grid{grid-template-columns:repeat(2,1fr);}}
 
-/* Kachel */
 .tile{position:relative;display:flex;flex-direction:column;justify-content:space-between;padding:14px;min-height:96px;text-decoration:none;color:var(--tfg,#1c1c1e);background:var(--tbg,#e8e8ee);border-radius:16px;overflow:hidden;transition:transform .15s,box-shadow .15s,filter .15s,opacity .15s;box-shadow:0 2px 8px rgba(0,0,0,.07);-webkit-tap-highlight-color:transparent;border:1.5px solid rgba(0,0,0,.05);}
 [data-theme="dark"] .tile{box-shadow:0 2px 12px rgba(0,0,0,.35);filter:brightness(.88) saturate(.9);}
 [data-theme="dark"] .tile:hover{filter:brightness(1.05) saturate(1.1);}
@@ -252,7 +275,6 @@ require_once __DIR__ . '/design-tokens.php';
 .tile-check{position:absolute;top:9px;right:9px;width:19px;height:19px;border-radius:50%;background:rgba(0,0,0,.15);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--tfg);}
 .tile--active{box-shadow:0 0 0 2.5px var(--tfg),0 4px 16px rgba(0,0,0,.10);}
 
-/* Logout */
 .tile-logout-wrap{margin-top:4px;}
 .tile-logout-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:15px;border-radius:14px;background:rgba(255,59,48,.09);color:#c0392b;font-size:15px;font-weight:600;text-decoration:none;font-family:-apple-system,system-ui,sans-serif;border:1.5px solid rgba(255,59,48,.16);transition:background .15s,transform .12s;box-sizing:border-box;}
 [data-theme="dark"] .tile-logout-btn{background:rgba(255,69,58,.12);color:#ff453a;border-color:rgba(255,69,58,.22);}
@@ -265,7 +287,6 @@ require_once __DIR__ . '/design-tokens.php';
 
 <script>
 (function(){
-  /* ── Burger ─────────────────────────────────────── */
   var overlay=document.getElementById('burger-overlay');
   var btn=document.getElementById('nav-burger-btn');
   var close=document.getElementById('burger-close');
@@ -277,7 +298,6 @@ require_once __DIR__ . '/design-tokens.php';
   if(overlay){overlay.addEventListener('click',function(e){if(!panel.contains(e.target))shut();});}
   document.addEventListener('keydown',function(e){if(e.key==='Escape')shut();});
 
-  /* ── Dark Mode ───────────────────────────────── */
   var dmBtn=document.getElementById('dm-toggle');
   var dmIcon=document.getElementById('dm-icon');
   function isDark(){return document.documentElement.getAttribute('data-theme')==='dark';}
