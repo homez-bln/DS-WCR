@@ -15,7 +15,8 @@ if (!wcr_is_cernal()) {
 }
 
 $config = wcr_pisignage_load_config();
-$csrf   = $_SESSION['csrf_token'] ?? '';
+// FIX: korrekter Session-Key laut auth.php ist wcr_csrf_token (nicht csrf_token)
+$csrf = wcr_csrf_token();
 ?>
 <!DOCTYPE html>
 <html lang="de">
@@ -23,7 +24,7 @@ $csrf   = $_SESSION['csrf_token'] ?? '';
   <meta charset="UTF-8">
   <title>Verwaltung: piSignage</title>
 </head>
-<body class="bo">
+<body class="bo" data-csrf="<?= htmlspecialchars($csrf) ?>">
 <?php include __DIR__ . '/../inc/menu.php'; ?>
 
 <div class="header-controls">
@@ -254,18 +255,36 @@ $csrf   = $_SESSION['csrf_token'] ?? '';
         piLogContent.textContent = JSON.stringify(obj, null, 2);
     }
 
+    // CSRF-Token aus body data-csrf lesen (single source of truth)
     function csrf() {
-        return settingsForm.querySelector('[name="csrf_token"]').value;
+        return document.body.getAttribute('data-csrf') || '';
     }
 
+    // CSRF-Token in ALLEN Formularen + body data-csrf aktualisieren
+    function updateCsrf(newToken) {
+        if (!newToken) return;
+        document.body.setAttribute('data-csrf', newToken);
+        document.querySelectorAll('input[name="csrf_token"]').forEach(function(el) {
+            el.value = newToken;
+        });
+    }
+
+    // Zentraler API-Call mit automatischer CSRF-Token-Aktualisierung
     async function postForm(formData) {
+        // Immer aktuellen Token setzen bevor Absenden
+        formData.set('csrf_token', csrf());
         try {
-            const res = await fetch(apiUrl, {
+            const res  = await fetch(apiUrl, {
                 method: 'POST',
                 body: formData,
                 credentials: 'same-origin'
             });
-            return await res.json();
+            const data = await res.json();
+            // Neues CSRF-Token aus Antwort immer speichern (ob Erfolg oder Fehler)
+            if (data.csrf_token) {
+                updateCsrf(data.csrf_token);
+            }
+            return data;
         } catch (e) {
             return { success: false, error: e.message };
         }
@@ -285,11 +304,10 @@ $csrf   = $_SESSION['csrf_token'] ?? '';
     async function loadGroups() {
         const fd = new FormData();
         fd.append('action', 'get_groups');
-        fd.append('csrf_token', csrf());
         const res   = await postForm(fd);
         const items = normalizeItems(res);
         groupSelect.innerHTML = '<option value="">Bitte wählen …</option>';
-        items.forEach(item => {
+        items.forEach(function(item) {
             const opt = document.createElement('option');
             opt.value = optionValue(item);
             opt.textContent = optionLabel(item);
@@ -301,11 +319,10 @@ $csrf   = $_SESSION['csrf_token'] ?? '';
     async function loadPlaylists() {
         const fd = new FormData();
         fd.append('action', 'get_playlists');
-        fd.append('csrf_token', csrf());
         const res   = await postForm(fd);
         const items = normalizeItems(res);
         playlistSelect.innerHTML = '<option value="">Bitte wählen …</option>';
-        items.forEach(item => {
+        items.forEach(function(item) {
             const opt = document.createElement('option');
             opt.value = optionValue(item);
             opt.textContent = optionLabel(item);
@@ -324,9 +341,8 @@ $csrf   = $_SESSION['csrf_token'] ?? '';
     // Token automatisch abrufen
     document.getElementById('btn-request-token').addEventListener('click', async function () {
         const fd = new FormData();
-        fd.append('action',     'request_token');
-        fd.append('csrf_token', csrf());
-        fd.append('otp',        document.getElementById('otp').value);
+        fd.append('action', 'request_token');
+        fd.append('otp',    document.getElementById('otp').value);
         const res = await postForm(fd);
         showStatus(settingsStatus, res.message || res.error || JSON.stringify(res), res.success ? 'ok' : 'err');
         if (res.token_masked) {
@@ -337,8 +353,7 @@ $csrf   = $_SESSION['csrf_token'] ?? '';
     // Verbindung testen
     document.getElementById('btn-test-connection').addEventListener('click', async function () {
         const fd = new FormData();
-        fd.append('action',     'test_connection');
-        fd.append('csrf_token', csrf());
+        fd.append('action', 'test_connection');
         const res = await postForm(fd);
         showStatus(settingsStatus, res.success ? '✅ Verbindung erfolgreich!' : ('❌ Fehler: ' + (res.error || 'Unbekannt')), res.success ? 'ok' : 'err');
         showLog(res);
