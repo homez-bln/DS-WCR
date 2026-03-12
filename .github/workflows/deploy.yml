@@ -1,0 +1,61 @@
+name: Deploy to IONOS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── 1. WordPress Plugin ──
+      - name: Deploy Plugin via FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps-legacy
+          port: 990
+          local-dir: ./wcr-digital-signage/
+          server-dir: /WebSpace/wordpress/wp-content/plugins/wcr-digital-signage/
+          dangerous-clean-slate: false
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            **/*.php_old
+            **/*.php_OLD
+            **/*_OLD_*
+            **/*_old_*
+
+      # ── 2. Standalone Backend ──
+      - name: Deploy Backend via FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps-legacy
+          port: 990
+          local-dir: ./be/
+          server-dir: /WebSpace/wordpress/be/
+          dangerous-clean-slate: false
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+
+      - name: Deployment erfolgreich
+        run: |
+          echo "✅ Deploy abgeschlossen"
+          echo "📦 Plugin: /WebSpace/wordpress/wp-content/plugins/wcr-digital-signage/"
+          echo "🔧 Backend: /WebSpace/wordpress/be/"
+          echo "🔄 Server ist synchron mit Git"
