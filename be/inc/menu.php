@@ -1,7 +1,7 @@
 <?php
 /**
- * inc/menu.php v12.3 — Helle Touch-Leiste + Burger-Menü
- * Burger-Button wird ausgeblendet wenn User keine sichtbaren Einträge hat
+ * inc/menu.php v12.4 — Helle Touch-Leiste + Burger-Menü
+ * Wenn User keine Burger-Items hat: direkter Logout-Button statt Burger
  */
 $_currentScript = basename($_SERVER['PHP_SELF']);
 $_currentQuery  = $_SERVER['QUERY_STRING'] ?? '';
@@ -34,14 +34,14 @@ $_burgerItems = [
     ['🗺',  'Obstacles',   'ctrl/obstacles.php',      'edit_content' ],
     ['💻',  'DS-Seiten',   'ctrl/ds-seiten.php',      'view_ds'      ],
     ['⚙️',  'DS Control',  'ctrl/ds-settings.php',    'view_ds'      ],
-    ['📸',  'Instagram',   'ctrl/instagram.php',      'view_ds'      ],  // eigene Seite
+    ['📸',  'Instagram',   'ctrl/instagram.php',      'view_ds'      ],
     ['📺',  'piSignage',   'ctrl/pisignage.php',      'view_ds'      ],
     ['🎵',  'Spotify',     'ctrl/spotify.php',        'manage_users' ],
     ['👥',  'Benutzer',    'ctrl/users.php',          'manage_users' ],
     ['🔐',  'Rechte',      'ctrl/permissions.php',    null           ],
 ];
 
-// Vorab prüfen welche Burger-Items der User sieht
+// Sichtbare Burger-Items filtern
 $_visibleBurger = array_filter($_burgerItems, function($item) {
     $perm = $item[3];
     if ($perm === null) return wcr_is_cernal();
@@ -84,6 +84,11 @@ require_once __DIR__ . '/design-tokens.php';
     <button class="nav-burger <?= $_burgerActive?'burger-active':'' ?>" id="nav-burger-btn" type="button" aria-label="Menü" aria-expanded="false">
       <span></span><span></span><span></span>
     </button>
+    <?php else: ?>
+    <a href="/be/logout.php" class="nav-btn nav-logout-btn" title="Logout">
+      <span class="nb-icon">🚪</span>
+      <span class="nb-label">Logout</span>
+    </a>
     <?php endif; ?>
   </div>
 
@@ -123,6 +128,8 @@ require_once __DIR__ . '/design-tokens.php';
 .nav-btn:active{transform:scale(.96);background:var(--border);}
 .nav-btn.active{background:rgba(var(--primary-rgb),.10);border-color:rgba(var(--primary-rgb),.35);color:var(--primary);}
 .nav-home-btn{font-weight:700;}
+.nav-logout-btn{color:var(--danger);border-color:rgba(var(--danger-rgb),.25);}
+.nav-logout-btn:hover{background:rgba(var(--danger-rgb),.06);border-color:rgba(var(--danger-rgb),.4);}
 .nb-icon{font-size:17px;line-height:1;flex-shrink:0;}
 .nb-label{line-height:1.2;}
 .nav-right{display:flex;align-items:center;gap:10px;flex-shrink:0;}
