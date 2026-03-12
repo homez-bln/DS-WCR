@@ -44,7 +44,7 @@ $csrf   = $_SESSION['csrf_token'] ?? '';
         <label>Base URL</label>
         <input type="text" name="base_url"
                value="<?= htmlspecialchars($config['base_url']) ?>"
-               placeholder="https://your-account.pisignage.com">
+               placeholder="https://homez_wcr.pisignage.com">
       </div>
 
       <div class="pi-field">
