@@ -18,6 +18,7 @@ $_menuItems = [
     ['Obstacles',      'ctrl/obstacles.php',      'edit_content'],
     ['DS-Seiten',      'ctrl/ds-seiten.php',      'view_ds'],
     ['DS Controller',  'ctrl/ds-settings.php',    'view_ds'],
+    ['📺 piSignage',   'ctrl/pisignage.php',      'view_ds'], 
 ];
 
 if (!function_exists('_wcr_menu_active')) {

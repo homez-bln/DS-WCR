@@ -1,25 +1,25 @@
 <?php
 /**
  * ctrl/permissions.php — Rechte-Matrix-Verwaltung (nur für cernal) v2
- * 
+ *
  * v2 NEU: Erweiterte UI mit verständlichen Funktionsbereichen
  *  - Gruppierung nach Bereichen (Produkte, Zeiten, Media, DS, Benutzer, System)
  *  - Jede Gruppe zeigt betroffene Seiten/Funktionen
  *  - Intern bleibt Permission-basierte Architektur erhalten
  *  - KEINE freien Dateirechte, nur Mapping auf bestehende Permissions
- * 
+ *
  * ZWECK:
  *  cernal kann granular steuern, welche Rollen welche Permissions haben.
  *  Änderungen werden sofort aktiv (Cache-Invalidierung).
  *  Sichere Fallbacks: cernal behält IMMER Vollzugriff (hardcoded).
- * 
+ *
  * SICHERHEIT:
  *  - require_login() + wcr_is_cernal() Check
  *  - CSRF-Schutz für alle POST-Aktionen
  *  - Validierung: Nur bekannte Permissions + Rollen
  *  - Hardcoded: cernal immer in allen Permissions
  *  - Matrix wird via REST API in wp_options gespeichert
- * 
+ *
  * ARCHITEKTUR-BESTÄTIGUNG:
  *  - Permissions bleiben technische Grundlage (wcr_can/wcr_require)
  *  - KEINE freie Dateirechte-Logik implementiert
@@ -62,11 +62,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($action === 'save') {
             $newMatrix = [];
             
-            // Alle Permissions durchgehen
             foreach (array_keys(WCR_DEFAULT_PERMISSIONS) as $perm) {
                 $roles = [];
                 
-                // Checkboxen auslesen (Format: perm_PERMISSION_ROLE)
                 foreach (WCR_ROLES as $role) {
                     $checkboxName = 'perm_' . $perm . '_' . $role;
                     if (isset($_POST[$checkboxName])) {
@@ -74,7 +72,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
                 
-                // SICHERHEIT: cernal IMMER hinzufügen (verhindert Aussperren)
                 if (!in_array('cernal', $roles, true)) {
                     $roles[] = 'cernal';
                 }
@@ -82,7 +79,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $newMatrix[$perm] = $roles;
             }
             
-            // Matrix speichern
             if (wcr_save_permissions($newMatrix)) {
                 $message = '✅ Rechte-Matrix gespeichert. Änderungen sind sofort aktiv.';
                 $msgType = 'ok';
@@ -94,7 +90,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // ── Auf Standard zurücksetzen ─────────────────────────────────────
         if ($action === 'reset') {
-            // Custom-Matrix löschen (setzt Fallback auf Standard)
             $ch = curl_init(DSC_WP_API_BASE . '/options');
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
@@ -105,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 CURLOPT_POSTFIELDS     => json_encode([
                     'wcr_secret' => DSC_WP_SECRET,
                     'key'        => 'wcr_permissions_matrix',
-                    'value'      => null, // Löschen durch null
+                    'value'      => null,
                 ], JSON_UNESCAPED_UNICODE),
             ]);
             $body = curl_exec($ch);
@@ -123,20 +118,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// ── Aktuelle Matrix laden ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ── Aktuelle Matrix laden ──────────────────────────────────────────────
 $currentMatrix = wcr_load_permissions();
 $isCustom      = wcr_has_custom_permissions();
 
-// ── WICHTIG: Funktionsbereich-Mapping auf Permissions ────────────────────────────────────────────────────────────────
-// Diese Struktur mappt UI-Bereiche auf technische Permissions.
-// Die Checkboxen wirken direkt auf wcr_can()/wcr_require(), weil die
-// gespeicherte Matrix zentral aus inc/auth.php geladen wird.
-// Diese Struktur dient zusätzlich der verständlichen Gruppierung im UI.
-
 $functionalAreas = [
-    // ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-    // BEREICH: PRODUKTE
-    // ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    // ── PRODUKTE ──────────────────────────────────────────────────────
     'products' => [
         'icon'  => '🛍️',
         'label' => 'Produkte',
@@ -162,10 +149,8 @@ $functionalAreas = [
             ],
         ],
     ],
-    
-    // ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-    // BEREICH: ZEITEN
-    // ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    // ── ZEITEN ────────────────────────────────────────────────────────
     'times' => [
         'icon'  => '🕒',
         'label' => 'Öffnungszeiten',
@@ -182,10 +167,8 @@ $functionalAreas = [
             ],
         ],
     ],
-    
-    // ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-    // BEREICH: CONTENT & MEDIA
-    // ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    // ── CONTENT & MEDIA ───────────────────────────────────────────────
     'content' => [
         'icon'  => '🎥',
         'label' => 'Content & Media',
@@ -198,7 +181,7 @@ $functionalAreas = [
                 'pages'      => ['kino.php', 'obstacles.php'],
                 'functions'  => ['Filme verwalten', 'Spielzeiten setzen', 'Trailer-Links', 'Obstacles konfigurieren', 'Map-Positionen pflegen'],
                 'critical'   => false,
-                'why'        => 'Steuert Zugriff auf Kino- und Obstacles-Seite. Diese Permission ist mit den echten Seiten-Checks synchron.',
+                'why'        => 'Steuert Zugriff auf Kino- und Obstacles-Seite.',
             ],
             [
                 'permission' => 'view_media',
@@ -207,18 +190,16 @@ $functionalAreas = [
                 'pages'      => ['media.php'],
                 'functions'  => ['Media-Bibliothek', 'Bilder hochladen', 'Aktiv/Inaktiv schalten'],
                 'critical'   => false,
-                'why'        => 'Steuert den Zugriff auf die Media-Seite. Obstacles läuft technisch über edit_content und ist deshalb dort einsortiert.',
+                'why'        => 'Steuert den Zugriff auf die Media-Seite.',
             ],
         ],
     ],
-    
-    // ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-    // BEREICH: DIGITAL SIGNAGE
-    // ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    // ── DIGITAL SIGNAGE ───────────────────────────────────────────────
     'digital_signage' => [
         'icon'  => '📺',
         'label' => 'Digital Signage',
-        'desc'  => 'DS-Seiten & Controller',
+        'desc'  => 'DS-Seiten, Controller & piSignage',
         'items' => [
             [
                 'permission' => 'view_ds',
@@ -229,12 +210,19 @@ $functionalAreas = [
                 'critical'   => false,
                 'why'        => 'Steuert Zugriff auf alle Digital-Signage-Verwaltungsseiten.',
             ],
+            [
+                'permission' => '(piSignage)',
+                'label'      => 'piSignage Steuerung',
+                'desc'       => 'Playlist-Trigger & API-Token-Verwaltung',
+                'pages'      => ['pisignage.php'],
+                'functions'  => ['API-Token eingeben', 'Gruppen laden', 'Playlisten triggern'],
+                'critical'   => true,
+                'why'        => '⚠️ ULTRA-KRITISCH: Nur cernal-Zugriff via wcr_is_cernal() Check. Enthält piSignage API-Credentials.',
+            ],
         ],
     ],
-    
-    // ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-    // BEREICH: TICKETS (Optional, falls verwendet)
-    // ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    // ── TICKETS ───────────────────────────────────────────────────────
     'tickets' => [
         'icon'  => '🎫',
         'label' => 'Tickets',
@@ -251,10 +239,8 @@ $functionalAreas = [
             ],
         ],
     ],
-    
-    // ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-    // BEREICH: SYSTEM (KRITISCH)
-    // ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    // ── SYSTEM ────────────────────────────────────────────────────────
     'system' => [
         'icon'  => '⚙️',
         'label' => 'System & Verwaltung',
@@ -289,10 +275,8 @@ $functionalAreas = [
             ],
         ],
     ],
-    
-    // ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-    // BEREICH: BASIS-FUNKTIONEN
-    // ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    // ── BASIS-FUNKTIONEN ──────────────────────────────────────────────
     'basic' => [
         'icon'  => '⏻️',
         'label' => 'Basis-Funktionen',
@@ -311,7 +295,6 @@ $functionalAreas = [
     ],
 ];
 
-// ── Rollen-Metadaten ──────────────────────────────────────────────────────────────────────────────────────────
 $roleMeta = [
     'cernal' => ['icon' => '🔧', 'color' => '#7c3aed', 'label' => 'Cernal', 'desc' => 'Vollzugriff (hardcoded)'],
     'admin'  => ['icon' => '👑', 'color' => '#0071e3', 'label' => 'Admin',  'desc' => 'Erweiterte Rechte'],
@@ -360,15 +343,14 @@ $roleMeta = [
   </div>
 </div>
 
-<!-- Rechte-Matrix: Gruppiert nach Funktionsbereichen -->
+<!-- Rechte-Matrix -->
 <form method="POST" class="permissions-form">
   <?= wcr_csrf_field() ?>
   <input type="hidden" name="action" value="save">
 
   <?php foreach ($functionalAreas as $areaKey => $area): ?>
   <div class="functional-area" data-area="<?= htmlspecialchars($areaKey) ?>">
-    
-    <!-- Bereichs-Header -->
+
     <div class="area-header">
       <div class="area-title">
         <span class="area-icon"><?= $area['icon'] ?></span>
@@ -377,7 +359,6 @@ $roleMeta = [
       <div class="area-desc"><?= htmlspecialchars($area['desc']) ?></div>
     </div>
 
-    <!-- Permissions-Tabelle für diesen Bereich -->
     <div class="permissions-table-wrapper">
       <table class="permissions-table">
         <thead>
@@ -399,11 +380,11 @@ $roleMeta = [
           <?php foreach ($area['items'] as $item):
             $perm         = $item['permission'];
             $isCritical   = $item['critical'];
-            $currentRoles = ($perm === '(Rechte-Matrix selbst)') ? ['cernal'] : ($currentMatrix[$perm] ?? []);
-            $isSpecial    = ($perm === '(Rechte-Matrix selbst)');
+            $currentRoles = ($perm === '(Rechte-Matrix selbst)' || $perm === '(piSignage)') ? ['cernal'] : ($currentMatrix[$perm] ?? []);
+            $isSpecial    = ($perm === '(Rechte-Matrix selbst)' || $perm === '(piSignage)');
           ?>
             <tr class="<?= $isCritical ? 'perm-row-critical' : '' ?> <?= $isSpecial ? 'perm-row-special' : '' ?>">
-              <!-- Funktions-Name-Cell -->
+
               <td class="perm-function-cell">
                 <div class="perm-function-header">
                   <div class="perm-function-label">
@@ -417,8 +398,7 @@ $roleMeta = [
                   </div>
                   <div class="perm-function-desc"><?= htmlspecialchars($item['desc']) ?></div>
                 </div>
-                
-                <!-- Expandable Details -->
+
                 <div class="perm-function-details" style="display:none">
                   <div class="pfd-section">
                     <strong>📝 Betroffene Seiten:</strong>
@@ -447,15 +427,13 @@ $roleMeta = [
                     <p><?= htmlspecialchars($item['why']) ?></p>
                   </div>
                 </div>
-                
+
                 <button type="button" class="btn-expand-details" onclick="toggleDetails(this)">
                   ▼ Details
                 </button>
               </td>
-              
-              <!-- Checkboxen für Rollen -->
+
               <?php if ($isSpecial): ?>
-                <!-- Rechte-Matrix selbst: Nur cernal, keine Checkboxen -->
                 <?php foreach (WCR_ROLES as $role): ?>
                   <td class="perm-checkbox-cell" data-role="<?= htmlspecialchars($role) ?>">
                     <span class="perm-checkmark-static">
@@ -467,7 +445,6 @@ $roleMeta = [
                   </td>
                 <?php endforeach; ?>
               <?php else: ?>
-                <!-- Normale Permissions: Checkboxen -->
                 <?php foreach (WCR_ROLES as $role):
                   $isChecked    = in_array($role, $currentRoles, true);
                   $isCernal     = ($role === 'cernal');
@@ -475,9 +452,9 @@ $roleMeta = [
                 ?>
                   <td class="perm-checkbox-cell" data-role="<?= htmlspecialchars($role) ?>">
                     <label class="perm-checkbox-wrapper <?= $isCernal ? 'checkbox-locked' : '' ?>">
-                      <input 
-                        type="checkbox" 
-                        name="<?= htmlspecialchars($checkboxName) ?>" 
+                      <input
+                        type="checkbox"
+                        name="<?= htmlspecialchars($checkboxName) ?>"
                         <?= $isChecked ? 'checked' : '' ?>
                         <?= $isCernal ? 'disabled' : '' ?>
                         class="perm-checkbox"
@@ -490,6 +467,7 @@ $roleMeta = [
                   </td>
                 <?php endforeach; ?>
               <?php endif; ?>
+
             </tr>
           <?php endforeach; ?>
         </tbody>
@@ -498,7 +476,6 @@ $roleMeta = [
   </div>
   <?php endforeach; ?>
 
-  <!-- Actions -->
   <div class="permissions-actions">
     <button type="submit" class="btn-upload btn-save">
       💾 Rechte-Matrix speichern
@@ -567,9 +544,7 @@ $roleMeta = [
 </div>
 
 <style>
-/* ── Permissions-Seite Styles ────────────────────────────────────────────────────────────────── */
-
-/* Info-Banner */
+/* ── Permissions-Seite Styles ─────────────────────────────────────── */
 .permissions-info-banner {
     background: rgba(var(--primary-rgb), var(--alpha-05));
     border: 1px solid rgba(var(--primary-rgb), var(--alpha-15));
@@ -580,27 +555,11 @@ $roleMeta = [
     gap: 16px;
     align-items: flex-start;
 }
-.pib-icon {
-    font-size: 28px;
-    line-height: 1;
-    flex-shrink: 0;
-}
-.pib-content {
-    flex: 1;
-}
-.pib-title {
-    font-size: 15px;
-    font-weight: 700;
-    color: var(--text-main);
-    margin-bottom: 6px;
-}
-.pib-desc {
-    font-size: 13px;
-    color: var(--text-muted);
-    line-height: 1.5;
-}
+.pib-icon { font-size: 28px; line-height: 1; flex-shrink: 0; }
+.pib-content { flex: 1; }
+.pib-title { font-size: 15px; font-weight: 700; color: var(--text-main); margin-bottom: 6px; }
+.pib-desc { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
 
-/* Functional Area Gruppierung */
 .functional-area {
     background: var(--bg-card);
     border-radius: var(--radius);
@@ -613,34 +572,13 @@ $roleMeta = [
     border-bottom: 2px solid var(--border);
     padding: 16px 20px;
 }
-.area-title {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 16px;
-    font-weight: 700;
-    color: var(--text-main);
-    margin-bottom: 4px;
-}
-.area-icon {
-    font-size: 22px;
-}
-.area-desc {
-    font-size: 12px;
-    color: var(--text-muted);
-}
+.area-title { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 700; color: var(--text-main); margin-bottom: 4px; }
+.area-icon { font-size: 22px; }
+.area-desc { font-size: 12px; color: var(--text-muted); }
 
-/* Permissions-Tabelle */
-.permissions-table-wrapper {
-    overflow: hidden;
-}
-.permissions-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-.permissions-table thead {
-    background: var(--bg-subtle);
-}
+.permissions-table-wrapper { overflow: hidden; }
+.permissions-table { width: 100%; border-collapse: collapse; }
+.permissions-table thead { background: var(--bg-subtle); }
 .permissions-table th {
     padding: 12px 14px;
     text-align: left;
@@ -651,321 +589,80 @@ $roleMeta = [
     color: var(--text-muted);
     border-bottom: 2px solid var(--border);
 }
-.permissions-table th.perm-col-role {
-    text-align: center;
-    width: 140px;
-}
-.permissions-table th .role-hint {
-    font-size: 9px;
-    color: var(--text-light);
-    font-weight: 500;
-    margin-top: 4px;
-    text-transform: none;
-    letter-spacing: 0;
-}
+.permissions-table th.perm-col-role { text-align: center; width: 140px; }
+.permissions-table th .role-hint { font-size: 9px; color: var(--text-light); font-weight: 500; margin-top: 4px; text-transform: none; letter-spacing: 0; }
 
-.permissions-table tbody tr {
-    border-bottom: 1px solid var(--border-light);
-    transition: background 0.15s;
-}
-.permissions-table tbody tr:hover {
-    background: var(--bg-subtle);
-}
+.permissions-table tbody tr { border-bottom: 1px solid var(--border-light); transition: background 0.15s; }
+.permissions-table tbody tr:hover { background: var(--bg-subtle); }
+.permissions-table tbody tr.perm-row-critical { background: rgba(var(--warning-rgb), var(--alpha-03)); }
+.permissions-table tbody tr.perm-row-critical:hover { background: rgba(var(--warning-rgb), var(--alpha-05)); }
+.permissions-table tbody tr.perm-row-special { background: rgba(123, 58, 237, 0.05); border-left: 3px solid #7c3aed; }
+.permissions-table tbody tr.perm-row-special:hover { background: rgba(123, 58, 237, 0.08); }
 
-/* Kritische & Spezielle Zeilen */
-.permissions-table tbody tr.perm-row-critical {
-    background: rgba(var(--warning-rgb), var(--alpha-03));
-}
-.permissions-table tbody tr.perm-row-critical:hover {
-    background: rgba(var(--warning-rgb), var(--alpha-05));
-}
-.permissions-table tbody tr.perm-row-special {
-    background: rgba(123, 58, 237, 0.05);
-    border-left: 3px solid #7c3aed;
-}
-.permissions-table tbody tr.perm-row-special:hover {
-    background: rgba(123, 58, 237, 0.08);
-}
+.perm-function-cell { padding: 14px; }
+.perm-function-header { margin-bottom: 8px; }
+.perm-function-label { font-size: 14px; font-weight: 600; color: var(--text-main); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.perm-function-desc { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
 
-/* Funktions-Cell */
-.perm-function-cell {
-    padding: 14px;
-}
-.perm-function-header {
-    margin-bottom: 8px;
-}
-.perm-function-label {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-main);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-}
-.perm-function-desc {
-    font-size: 12px;
-    color: var(--text-muted);
-    margin-top: 3px;
-}
+.critical-badge { font-size: 9px; background: rgba(var(--warning-rgb), var(--alpha-15)); color: #a67c00; padding: 2px 6px; border-radius: var(--radius-pill); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+.special-badge { font-size: 9px; background: rgba(123, 58, 237, 0.15); color: #7c3aed; padding: 2px 6px; border-radius: var(--radius-pill); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
 
-.critical-badge {
-    font-size: 9px;
-    background: rgba(var(--warning-rgb), var(--alpha-15));
-    color: #a67c00;
-    padding: 2px 6px;
-    border-radius: var(--radius-pill);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-.special-badge {
-    font-size: 9px;
-    background: rgba(123, 58, 237, 0.15);
-    color: #7c3aed;
-    padding: 2px 6px;
-    border-radius: var(--radius-pill);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
+.perm-function-details { background: var(--bg-subtle); border-radius: var(--radius-sm); padding: 12px; margin-top: 10px; font-size: 12px; }
+.pfd-section { margin-bottom: 10px; }
+.pfd-section:last-child { margin-bottom: 0; }
+.pfd-section strong { display: block; color: var(--text-main); margin-bottom: 4px; font-size: 11px; }
+.pfd-section ul { list-style: none; padding: 0; margin: 0; }
+.pfd-section li { padding: 2px 0; color: var(--text-muted); }
+.pfd-section code { background: var(--bg-card); padding: 2px 6px; border-radius: 3px; font-size: 11px; color: #0071e3; }
+.perm-code { font-weight: 600; background: rgba(var(--primary-rgb), var(--alpha-10)) !important; padding: 4px 8px !important; font-size: 12px !important; }
+.pfd-why { border-top: 1px solid var(--border-light); padding-top: 10px; }
+.pfd-why p { margin: 0; color: var(--text-muted); line-height: 1.5; }
 
-/* Details Expand */
-.perm-function-details {
-    background: var(--bg-subtle);
-    border-radius: var(--radius-sm);
-    padding: 12px;
-    margin-top: 10px;
-    font-size: 12px;
-}
-.pfd-section {
-    margin-bottom: 10px;
-}
-.pfd-section:last-child {
-    margin-bottom: 0;
-}
-.pfd-section strong {
-    display: block;
-    color: var(--text-main);
-    margin-bottom: 4px;
-    font-size: 11px;
-}
-.pfd-section ul {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-.pfd-section li {
-    padding: 2px 0;
-    color: var(--text-muted);
-}
-.pfd-section code {
-    background: var(--bg-card);
-    padding: 2px 6px;
-    border-radius: 3px;
-    font-size: 11px;
-    color: #0071e3;
-}
-.perm-code {
-    font-weight: 600;
-    background: rgba(var(--primary-rgb), var(--alpha-10)) !important;
-    padding: 4px 8px !important;
-    font-size: 12px !important;
-}
-.pfd-why {
-    border-top: 1px solid var(--border-light);
-    padding-top: 10px;
-}
-.pfd-why p {
-    margin: 0;
-    color: var(--text-muted);
-    line-height: 1.5;
-}
+.btn-expand-details { font-size: 11px; padding: 4px 10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-muted); cursor: pointer; transition: all 0.2s; margin-top: 8px; }
+.btn-expand-details:hover { background: var(--bg-subtle); color: var(--text-main); }
+.btn-expand-details.expanded { background: var(--primary); color: white; border-color: var(--primary); }
 
-.btn-expand-details {
-    font-size: 11px;
-    padding: 4px 10px;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--text-muted);
-    cursor: pointer;
-    transition: all 0.2s;
-    margin-top: 8px;
-}
-.btn-expand-details:hover {
-    background: var(--bg-subtle);
-    color: var(--text-main);
-}
-.btn-expand-details.expanded {
-    background: var(--primary);
-    color: white;
-    border-color: var(--primary);
-}
+.perm-checkbox-cell { text-align: center; padding: 14px; }
+.perm-checkbox-cell[data-role="cernal"] { background: rgba(123, 58, 237, 0.03); }
+.perm-checkbox-cell[data-role="admin"] { background: rgba(0, 113, 227, 0.03); }
+.perm-checkbox-cell[data-role="user"] { background: rgba(52, 199, 89, 0.03); }
 
-/* Checkbox-Cells */
-.perm-checkbox-cell {
-    text-align: center;
-    padding: 14px;
-}
-.perm-checkbox-cell[data-role="cernal"] {
-    background: rgba(123, 58, 237, 0.03);
-}
-.perm-checkbox-cell[data-role="admin"] {
-    background: rgba(0, 113, 227, 0.03);
-}
-.perm-checkbox-cell[data-role="user"] {
-    background: rgba(52, 199, 89, 0.03);
-}
+.perm-checkbox-wrapper { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+.perm-checkbox-wrapper.checkbox-locked { cursor: not-allowed; opacity: 0.6; }
+.perm-checkbox { display: none; }
+.perm-checkmark { font-size: 18px; transition: transform 0.15s; }
+.perm-checkmark-static { font-size: 18px; }
+.perm-checkbox-wrapper:hover .perm-checkmark { transform: scale(1.15); }
+.perm-checkbox-wrapper.checkbox-locked:hover .perm-checkmark { transform: none; }
+.locked-hint { font-size: 12px; opacity: 0.5; }
 
-/* Checkbox-Wrapper */
-.perm-checkbox-wrapper {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    cursor: pointer;
-    user-select: none;
-}
-.perm-checkbox-wrapper.checkbox-locked {
-    cursor: not-allowed;
-    opacity: 0.6;
-}
-.perm-checkbox {
-    display: none;
-}
-.perm-checkmark {
-    font-size: 18px;
-    transition: transform 0.15s;
-}
-.perm-checkmark-static {
-    font-size: 18px;
-}
-.perm-checkbox-wrapper:hover .perm-checkmark {
-    transform: scale(1.15);
-}
-.perm-checkbox-wrapper.checkbox-locked:hover .perm-checkmark {
-    transform: none;
-}
-.locked-hint {
-    font-size: 12px;
-    opacity: 0.5;
-}
+.permissions-actions { display: flex; gap: 12px; justify-content: flex-start; margin-top: 20px; }
+.btn-save { background: var(--success); }
+.btn-secondary { padding: 10px 20px; background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.2s, border-color 0.2s; }
+.btn-secondary:hover { background: var(--bg-subtle); border-color: var(--text-muted); }
 
-/* Actions */
-.permissions-actions {
-    display: flex;
-    gap: 12px;
-    justify-content: flex-start;
-    margin-top: 20px;
-}
-.btn-save {
-    background: var(--success);
-}
-.btn-secondary {
-    padding: 10px 20px;
-    background: var(--bg-card);
-    color: var(--text-main);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.2s, border-color 0.2s;
-}
-.btn-secondary:hover {
-    background: var(--bg-subtle);
-    border-color: var(--text-muted);
-}
+.architecture-confirmation { background: var(--bg-card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; margin-top: 24px; }
+.architecture-confirmation h3 { font-size: 14px; font-weight: 700; color: var(--text-main); margin: 0 0 14px; }
+.ac-grid { display: grid; gap: 12px; }
+.ac-item { display: flex; gap: 12px; align-items: flex-start; padding: 12px; background: var(--bg-subtle); border-radius: var(--radius-sm); }
+.ac-item.ac-ok { border-left: 3px solid var(--success); }
+.ac-icon { font-size: 20px; flex-shrink: 0; }
+.ac-item strong { display: block; font-size: 13px; color: var(--text-main); margin-bottom: 4px; }
+.ac-item p { font-size: 12px; color: var(--text-muted); margin: 0; line-height: 1.5; }
 
-/* Architektur-Bestätigung */
-.architecture-confirmation {
-    background: var(--bg-card);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow);
-    padding: 20px;
-    margin-top: 24px;
-}
-.architecture-confirmation h3 {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--text-main);
-    margin: 0 0 14px;
-}
-.ac-grid {
-    display: grid;
-    gap: 12px;
-}
-.ac-item {
-    display: flex;
-    gap: 12px;
-    align-items: flex-start;
-    padding: 12px;
-    background: var(--bg-subtle);
-    border-radius: var(--radius-sm);
-}
-.ac-item.ac-ok {
-    border-left: 3px solid var(--success);
-}
-.ac-icon {
-    font-size: 20px;
-    flex-shrink: 0;
-}
-.ac-item strong {
-    display: block;
-    font-size: 13px;
-    color: var(--text-main);
-    margin-bottom: 4px;
-}
-.ac-item p {
-    font-size: 12px;
-    color: var(--text-muted);
-    margin: 0;
-    line-height: 1.5;
-}
+.permissions-legend { background: var(--bg-card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; margin-top: 24px; }
+.permissions-legend h3 { font-size: 14px; font-weight: 700; color: var(--text-main); margin: 0 0 14px; }
+.legend-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.legend-item { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-muted); }
+.legend-icon { font-size: 18px; }
 
-/* Legende */
-.permissions-legend {
-    background: var(--bg-card);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow);
-    padding: 20px;
-    margin-top: 24px;
-}
-.permissions-legend h3 {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--text-main);
-    margin: 0 0 14px;
-}
-.legend-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 12px;
-}
-.legend-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 13px;
-    color: var(--text-muted);
-}
-.legend-icon {
-    font-size: 18px;
-}
-
-/* Responsive */
 @media (max-width: 1000px) {
-    .permissions-table-wrapper {
-        overflow-x: auto;
-    }
-    .permissions-table {
-        min-width: 800px;
-    }
+    .permissions-table-wrapper { overflow-x: auto; }
+    .permissions-table { min-width: 800px; }
 }
 </style>
 
 <script>
-// Checkbox-Toggle mit visueller Bestätigung
 document.querySelectorAll('.perm-checkbox').forEach(cb => {
     cb.addEventListener('change', function() {
         const checkmark = this.parentElement.querySelector('.perm-checkmark');
@@ -973,7 +670,6 @@ document.querySelectorAll('.perm-checkbox').forEach(cb => {
     });
 });
 
-// Warnung bei kritischen Rechten
 const criticalCheckboxes = document.querySelectorAll('.perm-row-critical .perm-checkbox');
 criticalCheckboxes.forEach(cb => {
     cb.addEventListener('change', function() {
@@ -987,11 +683,9 @@ criticalCheckboxes.forEach(cb => {
     });
 });
 
-// Details Expand/Collapse
 function toggleDetails(btn) {
     const details = btn.previousElementSibling;
     const isVisible = details.style.display !== 'none';
-    
     if (isVisible) {
         details.style.display = 'none';
         btn.textContent = '▼ Details';
