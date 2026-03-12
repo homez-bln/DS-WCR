@@ -1,7 +1,6 @@
 <?php
 /**
- * inc/menu.php v14.1 — Apple-Style Pastell-Kacheln, kategorisiert
- * Kategorien: DS | Media | API | Verwaltung
+ * inc/menu.php v14.2 — Apple-Style Pastell-Kacheln + Dark-Mode-Toggle
  */
 $_currentScript = basename($_SERVER['PHP_SELF']);
 $_currentQuery  = $_SERVER['QUERY_STRING'] ?? '';
@@ -28,8 +27,6 @@ $_mainItems = [
     ['➕',  'Extra',     'ctrl/list.php?t=extra',   'edit_products'],
 ];
 
-// Kategorisierte Burger-Items
-// Format: [icon, label, href, perm, [bg, fg]]
 $_burgerCategories = [
     [
         'label' => 'DS',
@@ -67,7 +64,6 @@ $_burgerCategories = [
     ],
 ];
 
-// Sichtbarkeit je Kategorie berechnen
 $_visibleCategories = [];
 foreach ($_burgerCategories as $cat) {
     $visItems = array_values(array_filter($cat['items'], function($item) {
@@ -76,11 +72,7 @@ foreach ($_burgerCategories as $cat) {
         return wcr_can($perm);
     }));
     if (count($visItems) > 0) {
-        $_visibleCategories[] = [
-            'label' => $cat['label'],
-            'icon'  => $cat['icon'],
-            'items' => $visItems,
-        ];
+        $_visibleCategories[] = ['label'=>$cat['label'],'icon'=>$cat['icon'],'items'=>$visItems];
     }
 }
 $_showBurger = count($_visibleCategories) > 0;
@@ -94,6 +86,8 @@ foreach ($_visibleCategories as $cat) {
 
 require_once __DIR__ . '/design-tokens.php';
 ?>
+<!-- Flash-Prevention: Dark-Mode sofort beim Laden anwenden -->
+<script>(function(){var t=localStorage.getItem('wcr-theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');})();</script>
 <link rel="stylesheet" href="/be/inc/style.css">
 
 <div class="nav-wrap">
@@ -133,15 +127,21 @@ require_once __DIR__ . '/design-tokens.php';
         <div class="tile-sf-icon"></div>
         <span class="tile-header-title">Menü</span>
       </div>
-      <button class="tile-close" id="burger-close" type="button">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-          <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        </svg>
-      </button>
+      <div class="tile-header-right">
+        <!-- Dark Mode Toggle -->
+        <button class="dm-toggle" id="dm-toggle" type="button" aria-label="Dark Mode umschalten" title="Dark Mode">
+          <span class="dm-icon" id="dm-icon">🌙</span>
+        </button>
+        <button class="tile-close" id="burger-close" type="button">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
     </div>
 
     <div class="tile-scroll">
-      <?php foreach ($_visibleCategories as $catIdx => $cat): ?>
+      <?php foreach ($_visibleCategories as $cat): ?>
       <div class="tile-category">
         <div class="tile-cat-label">
           <span class="tile-cat-icon"><?= $cat['icon'] ?></span>
@@ -175,8 +175,8 @@ require_once __DIR__ . '/design-tokens.php';
 <?php endif; ?>
 
 <style>
-/* ── NAV ────────────────────────────────────────────────── */
-.nav-wrap{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 16px;background:var(--bg-card);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:24px;flex-wrap:wrap;}
+/* ── NAV ──────────────────────────────────────────────── */
+.nav-wrap{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 16px;background:var(--bg-card);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:24px;flex-wrap:wrap;transition:background .3s,box-shadow .3s;}
 .nav-main{display:flex;flex-wrap:wrap;gap:6px;align-items:center;flex:1;}
 .nav-btn{display:flex;align-items:center;gap:7px;padding:10px 16px;min-height:44px;border-radius:10px;background:var(--bg-body);text-decoration:none;color:var(--text-main);font-size:14px;font-weight:600;white-space:nowrap;border:1.5px solid var(--border-light);transition:background .15s,border-color .15s,color .15s,transform .1s;-webkit-tap-highlight-color:transparent;user-select:none;cursor:pointer;}
 .nav-btn:hover{background:var(--border-light);border-color:var(--border);}
@@ -194,36 +194,57 @@ require_once __DIR__ . '/design-tokens.php';
 .nav-burger:hover{background:var(--border-light);}
 .nav-burger.burger-active span{background:var(--primary);}
 
-/* ── OVERLAY ───────────────────────────────────────────── */
+/* ── OVERLAY ─────────────────────────────────────────── */
 .tile-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.30);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:1000;justify-content:flex-end;}
 .tile-overlay.open{display:flex;animation:tOvIn .2s ease;}
 @keyframes tOvIn{from{opacity:0}to{opacity:1}}
 
-.tile-panel{width:67vw;max-width:960px;min-width:320px;height:100%;background:rgba(248,248,250,.95);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);display:flex;flex-direction:column;animation:tPanIn .28s cubic-bezier(.32,0,.18,1);border-left:1px solid rgba(0,0,0,.08);box-shadow:-12px 0 48px rgba(0,0,0,.18);}
+.tile-panel{width:67vw;max-width:960px;min-width:320px;height:100%;background:rgba(248,248,250,.96);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);display:flex;flex-direction:column;animation:tPanIn .28s cubic-bezier(.32,0,.18,1);border-left:1px solid rgba(0,0,0,.08);box-shadow:-12px 0 48px rgba(0,0,0,.18);transition:background .3s;}
+[data-theme="dark"] .tile-panel{background:rgba(28,28,30,.97);border-left-color:rgba(255,255,255,.08);}
 @keyframes tPanIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
 
-.tile-header{display:flex;align-items:center;justify-content:space-between;padding:20px 28px 18px;border-bottom:1px solid rgba(0,0,0,.08);flex-shrink:0;background:rgba(255,255,255,.8);}
+/* Header */
+.tile-header{display:flex;align-items:center;justify-content:space-between;padding:20px 28px 18px;border-bottom:1px solid rgba(0,0,0,.08);flex-shrink:0;background:rgba(255,255,255,.8);transition:background .3s,border-color .3s;}
+[data-theme="dark"] .tile-header{background:rgba(44,44,46,.95);border-bottom-color:rgba(255,255,255,.08);}
 .tile-header-left{display:flex;align-items:center;gap:10px;}
+.tile-header-right{display:flex;align-items:center;gap:8px;}
 .tile-sf-icon{font-size:22px;color:#007aff;line-height:1;font-family:-apple-system,system-ui;}
-.tile-header-title{font-size:18px;font-weight:700;color:#1c1c1e;letter-spacing:-.3px;font-family:-apple-system,system-ui,sans-serif;}
+.tile-header-title{font-size:18px;font-weight:700;color:#1c1c1e;letter-spacing:-.3px;font-family:-apple-system,system-ui,sans-serif;transition:color .3s;}
+[data-theme="dark"] .tile-header-title{color:#f5f5f7;}
+
+/* Dark Mode Toggle Button */
+.dm-toggle{width:36px;height:36px;border:none;background:rgba(0,0,0,.06);border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .2s,transform .15s;flex-shrink:0;}
+.dm-toggle:hover{background:rgba(0,0,0,.12);transform:rotate(15deg);}
+.dm-toggle:active{transform:scale(.9);}
+[data-theme="dark"] .dm-toggle{background:rgba(255,255,255,.10);}
+[data-theme="dark"] .dm-toggle:hover{background:rgba(255,255,255,.18);}
+.dm-icon{font-size:17px;line-height:1;transition:transform .3s;}
+
 .tile-close{width:30px;height:30px;border:none;background:rgba(0,0,0,.07);border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#636366;transition:background .15s,color .15s;flex-shrink:0;}
 .tile-close:hover{background:rgba(0,0,0,.13);color:#1c1c1e;}
+[data-theme="dark"] .tile-close{background:rgba(255,255,255,.10);color:#98989d;}
+[data-theme="dark"] .tile-close:hover{background:rgba(255,255,255,.18);color:#f5f5f7;}
 
+/* Scroll */
 .tile-scroll{flex:1;overflow-y:auto;padding:20px 28px 28px;display:flex;flex-direction:column;gap:24px;}
 .tile-scroll::-webkit-scrollbar{width:4px;}
 .tile-scroll::-webkit-scrollbar-thumb{background:rgba(0,0,0,.15);border-radius:4px;}
+[data-theme="dark"] .tile-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);}
 
-/* ── Kategorie ────────────────────────────────────────── */
+/* Kategorie */
 .tile-category{display:flex;flex-direction:column;gap:10px;}
 .tile-cat-label{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#8e8e93;font-family:-apple-system,system-ui,sans-serif;padding-bottom:2px;border-bottom:1px solid rgba(0,0,0,.07);}
+[data-theme="dark"] .tile-cat-label{color:#636366;border-bottom-color:rgba(255,255,255,.07);}
 .tile-cat-icon{font-size:14px;}
 
-/* ── Grid ──────────────────────────────────────────────── */
+/* Grid */
 .tile-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
 @media(max-width:600px){.tile-grid{grid-template-columns:repeat(2,1fr);}}
 
-/* ── Kachel ─────────────────────────────────────────────── */
-.tile{position:relative;display:flex;flex-direction:column;justify-content:space-between;padding:14px;min-height:96px;text-decoration:none;color:var(--tfg,#1c1c1e);background:var(--tbg,#e8e8ee);border-radius:16px;overflow:hidden;transition:transform .15s,box-shadow .15s,filter .15s;box-shadow:0 2px 8px rgba(0,0,0,.07);-webkit-tap-highlight-color:transparent;border:1.5px solid rgba(0,0,0,.05);}
+/* Kachel */
+.tile{position:relative;display:flex;flex-direction:column;justify-content:space-between;padding:14px;min-height:96px;text-decoration:none;color:var(--tfg,#1c1c1e);background:var(--tbg,#e8e8ee);border-radius:16px;overflow:hidden;transition:transform .15s,box-shadow .15s,filter .15s,opacity .15s;box-shadow:0 2px 8px rgba(0,0,0,.07);-webkit-tap-highlight-color:transparent;border:1.5px solid rgba(0,0,0,.05);}
+[data-theme="dark"] .tile{box-shadow:0 2px 12px rgba(0,0,0,.35);filter:brightness(.88) saturate(.9);}
+[data-theme="dark"] .tile:hover{filter:brightness(1.05) saturate(1.1);}
 .tile:hover{transform:translateY(-3px) scale(1.02);box-shadow:0 8px 22px rgba(0,0,0,.12);}
 .tile:active{transform:scale(.96);filter:brightness(.95);}
 .tile-icon{font-size:28px;line-height:1;display:block;}
@@ -231,10 +252,12 @@ require_once __DIR__ . '/design-tokens.php';
 .tile-check{position:absolute;top:9px;right:9px;width:19px;height:19px;border-radius:50%;background:rgba(0,0,0,.15);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--tfg);}
 .tile--active{box-shadow:0 0 0 2.5px var(--tfg),0 4px 16px rgba(0,0,0,.10);}
 
-/* ── Logout ─────────────────────────────────────────────── */
+/* Logout */
 .tile-logout-wrap{margin-top:4px;}
 .tile-logout-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:15px;border-radius:14px;background:rgba(255,59,48,.09);color:#c0392b;font-size:15px;font-weight:600;text-decoration:none;font-family:-apple-system,system-ui,sans-serif;border:1.5px solid rgba(255,59,48,.16);transition:background .15s,transform .12s;box-sizing:border-box;}
-.tile-logout-btn:hover{background:rgba(255,59,48,.16);}
+[data-theme="dark"] .tile-logout-btn{background:rgba(255,69,58,.12);color:#ff453a;border-color:rgba(255,69,58,.22);}
+.tile-logout-btn:hover{background:rgba(255,59,48,.17);}
+[data-theme="dark"] .tile-logout-btn:hover{background:rgba(255,69,58,.22);}
 .tile-logout-btn:active{transform:scale(.98);}
 
 @media(max-width:768px){.tile-panel{width:100%;min-width:0;}.tile-scroll{padding:16px 16px 24px;}}
@@ -242,15 +265,35 @@ require_once __DIR__ . '/design-tokens.php';
 
 <script>
 (function(){
-  const overlay=document.getElementById('burger-overlay');
-  const btn=document.getElementById('nav-burger-btn');
-  const close=document.getElementById('burger-close');
-  const panel=document.getElementById('tile-panel');
+  /* ── Burger ─────────────────────────────────────── */
+  var overlay=document.getElementById('burger-overlay');
+  var btn=document.getElementById('nav-burger-btn');
+  var close=document.getElementById('burger-close');
+  var panel=document.getElementById('tile-panel');
   function open(){overlay.classList.add('open');btn.setAttribute('aria-expanded','true');document.body.style.overflow='hidden';}
   function shut(){overlay.classList.remove('open');btn.setAttribute('aria-expanded','false');document.body.style.overflow='';}
-  btn.addEventListener('click',function(){overlay.classList.contains('open')?shut():open();});
-  close.addEventListener('click',shut);
-  overlay.addEventListener('click',function(e){if(!panel.contains(e.target))shut();});
+  if(btn){btn.addEventListener('click',function(){overlay.classList.contains('open')?shut():open();});}
+  if(close){close.addEventListener('click',shut);}
+  if(overlay){overlay.addEventListener('click',function(e){if(!panel.contains(e.target))shut();});}
   document.addEventListener('keydown',function(e){if(e.key==='Escape')shut();});
+
+  /* ── Dark Mode ───────────────────────────────── */
+  var dmBtn=document.getElementById('dm-toggle');
+  var dmIcon=document.getElementById('dm-icon');
+  function isDark(){return document.documentElement.getAttribute('data-theme')==='dark';}
+  function updateIcon(){if(dmIcon)dmIcon.textContent=isDark()?'☀️':'🌙';}
+  updateIcon();
+  if(dmBtn){
+    dmBtn.addEventListener('click',function(){
+      if(isDark()){
+        document.documentElement.removeAttribute('data-theme');
+        localStorage.setItem('wcr-theme','light');
+      } else {
+        document.documentElement.setAttribute('data-theme','dark');
+        localStorage.setItem('wcr-theme','dark');
+      }
+      updateIcon();
+    });
+  }
 })();
 </script>
