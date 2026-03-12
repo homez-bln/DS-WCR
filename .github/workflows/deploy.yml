@@ -9,13 +9,13 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 1
+    timeout-minutes: 2
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Deploy via SFTP
+      - name: Deploy Plugin via SFTP
         uses: wlixcc/SFTP-Deploy-Action@v1.2.4
         with:
           server: ${{ secrets.FTP_SERVER }}
@@ -28,9 +28,23 @@ jobs:
           args: '--exclude=node_modules/ --exclude=.git/ --exclude=.github/'
           port: 22
 
+      - name: Deploy Backend via SFTP
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local_path: './be/*'
+          remote_path: '/WebSpace/wordpress/be/'
+          sftp_only: true
+          delete_remote_files: true
+          args: '--exclude=.git/ --exclude=.github/'
+          port: 22
+
       - name: Deployment erfolgreich
         run: |
           echo "✅ Deploy abgeschlossen"
           echo "📦 Plugin: wcr-digital-signage/"
+          echo "🔧 Backend: be/"
           echo "🗑️ Alte Dateien wurden entfernt"
           echo "🔄 Server ist synchron mit Git"
