@@ -1,6 +1,6 @@
 <?php
 /**
- * inc/menu.php v12.1 — Helle Touch-Leiste + Burger-Menü
+ * inc/menu.php v12.2 — Helle Touch-Leiste + Burger-Menü
  * Burger-Button wird ausgeblendet wenn User keine sichtbaren Einträge hat
  */
 $_currentScript = basename($_SERVER['PHP_SELF']);
@@ -35,6 +35,7 @@ $_burgerItems = [
     ['💻',  'DS-Seiten',   'ctrl/ds-seiten.php',      'view_ds'      ],
     ['⚙️',  'DS Control',  'ctrl/ds-settings.php',    'view_ds'      ],
     ['📺',  'piSignage',   'ctrl/pisignage.php',      'view_ds'      ],
+    ['🎵',  'Spotify',     'ctrl/spotify.php',        'manage_users' ],  // admin + cernal
     ['👥',  'Benutzer',    'ctrl/users.php',          'manage_users' ],
     ['🔐',  'Rechte',      'ctrl/permissions.php',    null           ],
 ];
