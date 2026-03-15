@@ -10,6 +10,7 @@ if (!defined('ABSPATH')) exit;
       - Instagram-Daten (bereits gefiltert durch WCR_Instagram Klasse)
       - Obstacles + Map-Config GET (Frontend-Rendering)
       - Ping (harmlose Statistiken)
+      - playlist-check (Read-Only Stock-Check für piSignage)
    
    🔒 Geschützt (permission_callback mit Auth-Check):
       - /ds-settings GET + POST → NUR WordPress-Admins
@@ -26,10 +27,10 @@ define('WCR_DS_API_SECRET', 'WCR_DS_2026');
 
 add_action('rest_api_init', function() {
 
-    /* ══════════════════════════════════════════════════════════════════════════
+    /* ════════════════════════════════════════════════════════════════════════════
        ÖFFENTLICHE READ-ONLY CONTENT-ROUTEN
        Zeigen nur aktive/vorrätige Items für Digital Signage Frontend
-    ══════════════════════════════════════════════════════════════════════════ */
+    ════════════════════════════════════════════════════════════════════════════ */
 
     // ── Alle Drinks ──
     register_rest_route('wakecamp/v1', '/drinks', [
@@ -247,9 +248,7 @@ add_action('rest_api_init', function() {
         'callback'            => function() {
             $db = get_ionos_db_connection();
             if (!$db) return new WP_Error('db_error', 'DB fehlgeschlagen', ['status' => 500]);
-            
             $today = date('Y-m-d');
-            
             $films = $db->get_results($db->prepare(
                 "SELECT id, title, cover_url, date, sort_order
                  FROM wp_wcr_kino
@@ -257,7 +256,6 @@ add_action('rest_api_init', function() {
                  ORDER BY date ASC, sort_order ASC",
                 $today
             ), ARRAY_A);
-            
             return rest_ensure_response($films ?: []);
         },
         'permission_callback' => '__return_true',
@@ -285,123 +283,97 @@ add_action('rest_api_init', function() {
         'permission_callback' => '__return_true',
     ]);
 
-    /* ══════════════════════════════════════════════════════════════════════════
+    /* ════════════════════════════════════════════════════════════════════════════
+       PLAYLIST CHECK — piSignage Aktivierungscheck
+       GET /wakecamp/v1/playlist-check
+
+       Parameter:
+         ids   = Komma-getrennte Produktnummern (Spalte `nummer`)
+         table = Optionale Tabelle (food|drinks|cable|camping|extra|ice)
+         typ   = Optionaler Typ-Filter (z.B. "Burger")
+         mode  = "any" (Standard) | "all"
+
+       Verhalten:
+         - IDs gesetzt    → prüft stock jeder ID
+         - Typ gesetzt    → prüft COUNT(*) WHERE typ = ? AND stock > 0
+         - Nur table      → prüft COUNT(*) FROM <table> WHERE stock > 0
+         - Nichts gesetzt → active = true (Fallback)
+
+       Response:
+         { "active": true, "count": 2, "total": 3, "mode": "any" }
+    ════════════════════════════════════════════════════════════════════════════ */
+
+    register_rest_route('wakecamp/v1', '/playlist-check', [
+        'methods'             => 'GET',
+        'callback'            => 'wakecamp_playlist_check',
+        'permission_callback' => '__return_true',
+    ]);
+
+    /* ════════════════════════════════════════════════════════════════════════════
        OBSTACLES MAP-CONFIG
        GET = öffentlich (Frontend-Rendering)
-       POST = geschützt (Backend-Verwaltung nutzt diese Route noch)
-       
-       TODO: Langfristig POST komplett ins Backend (be/ctrl/obstacles.php) verlagern
-    ══════════════════════════════════════════════════════════════════════════ */
+       POST = geschützt (Backend-Verwaltung)
+    ════════════════════════════════════════════════════════════════════════════ */
 
     register_rest_route('wakecamp/v1', '/obstacles/map-config', [
         [
-            // GET: Öffentlich – Frontend braucht Config zum Rendern der Karte
             'methods'             => 'GET',
             'callback'            => function(WP_REST_Request $req) {
                 $mode = strtolower(sanitize_text_field($req->get_param('mode') ?? 'landscape'));
                 if (!in_array($mode, ['landscape', 'portrait'], true)) $mode = 'landscape';
-
-                $def_lat   = 52.821428251670844;
-                $def_lon   = 13.5770999960116;
-                $def_zoom  = 17.9;
-                $def_rot   = 0.0;
-                $def_style = 'voyager-nolabels';
-
-                $lat_key   = 'wcr_obstacles_map_lat_'   . $mode;
-                $lon_key   = 'wcr_obstacles_map_lon_'   . $mode;
-                $zoom_key  = 'wcr_obstacles_map_zoom_'  . $mode;
-                $rot_key   = 'wcr_obstacles_map_rot_'   . $mode;
-                $style_key = 'wcr_obstacles_map_style_' . $mode;
-
-                $lat   = get_option($lat_key,   null);
-                $lon   = get_option($lon_key,   null);
-                $zoom  = get_option($zoom_key,  null);
-                $rot   = get_option($rot_key,   null);
-                $style = get_option($style_key, null);
-
-                // Fallback: alte Keys
+                $def_lat=52.821428251670844; $def_lon=13.5770999960116; $def_zoom=17.9; $def_rot=0.0; $def_style='voyager-nolabels';
+                $lat   = get_option('wcr_obstacles_map_lat_'.$mode,   null);
+                $lon   = get_option('wcr_obstacles_map_lon_'.$mode,   null);
+                $zoom  = get_option('wcr_obstacles_map_zoom_'.$mode,  null);
+                $rot   = get_option('wcr_obstacles_map_rot_'.$mode,   null);
+                $style = get_option('wcr_obstacles_map_style_'.$mode, null);
                 if (!is_numeric($lat))  $lat  = get_option('wcr_obstacles_map_lat',  $def_lat);
                 if (!is_numeric($lon))  $lon  = get_option('wcr_obstacles_map_lon',  $def_lon);
                 if (!is_numeric($zoom)) $zoom = get_option('wcr_obstacles_map_zoom', $def_zoom);
                 if (!is_numeric($rot))  $rot  = get_option('wcr_obstacles_map_rot',  $def_rot);
                 if (empty($style))      $style = $def_style;
-
-                $valid_styles = ['voyager-nolabels', 'satellite', 'dark', 'light', 'satellite-labels'];
+                $valid_styles = ['voyager-nolabels','satellite','dark','light','satellite-labels'];
                 if (!in_array($style, $valid_styles, true)) $style = $def_style;
-
-                return rest_ensure_response([
-                    'mode'  => $mode,
-                    'lat'   => (float)$lat,
-                    'lon'   => (float)$lon,
-                    'zoom'  => (float)$zoom,
-                    'rot'   => (float)$rot,
-                    'style' => $style,
-                ]);
+                return rest_ensure_response(['mode'=>$mode,'lat'=>(float)$lat,'lon'=>(float)$lon,'zoom'=>(float)$zoom,'rot'=>(float)$rot,'style'=>$style]);
             },
             'permission_callback' => '__return_true',
         ],
         [
-            // POST: Geschützt – Backend-Brücke für Karten-Config-Speicherung
             'methods'             => 'POST',
             'callback'            => function(WP_REST_Request $req) {
                 $secret = $req->get_param('wcr_secret') ?? '';
                 $nonce  = $req->get_header('X-WP-Nonce') ?: ($req->get_param('_wpnonce') ?? '');
-
-                $ok = ($secret === WCR_DS_API_SECRET)
-                   || current_user_can('manage_options')
-                   || wp_verify_nonce($nonce, 'wcr_obstacles_map_config');
-
-                if (!$ok) {
-                    return new WP_Error('forbidden', 'Nicht autorisiert', ['status' => 403]);
-                }
-
+                $ok = ($secret === WCR_DS_API_SECRET) || current_user_can('manage_options') || wp_verify_nonce($nonce, 'wcr_obstacles_map_config');
+                if (!$ok) return new WP_Error('forbidden', 'Nicht autorisiert', ['status' => 403]);
                 $mode = strtolower(sanitize_text_field($req->get_param('mode') ?? 'landscape'));
                 if (!in_array($mode, ['landscape', 'portrait'], true)) $mode = 'landscape';
-
-                $lat   = (float) $req->get_param('lat');
-                $lon   = (float) $req->get_param('lon');
-                $zoom  = (float) $req->get_param('zoom');
-                $rot   = (float) ($req->get_param('rot') ?? 0);
-                $style = sanitize_text_field($req->get_param('style') ?? 'voyager-nolabels');
-
-                $valid_styles = ['voyager-nolabels', 'satellite', 'dark', 'light', 'satellite-labels'];
-                if (!in_array($style, $valid_styles, true)) $style = 'voyager-nolabels';
-
-                if ($lat < -90  || $lat > 90)  return new WP_Error('invalid', 'Lat ungültig',  ['status' => 400]);
-                if ($lon < -180 || $lon > 180) return new WP_Error('invalid', 'Lon ungültig',  ['status' => 400]);
-                if ($zoom < 1   || $zoom > 21) return new WP_Error('invalid', 'Zoom ungültig', ['status' => 400]);
-                if ($rot < -360 || $rot > 360) return new WP_Error('invalid', 'Rotation ungültig', ['status' => 400]);
-
-                update_option('wcr_obstacles_map_lat_'   . $mode, $lat);
-                update_option('wcr_obstacles_map_lon_'   . $mode, $lon);
-                update_option('wcr_obstacles_map_zoom_'  . $mode, $zoom);
-                update_option('wcr_obstacles_map_rot_'   . $mode, $rot);
-                update_option('wcr_obstacles_map_style_' . $mode, $style);
-
-                if ($mode === 'landscape') {
-                    update_option('wcr_obstacles_map_lat',  $lat);
-                    update_option('wcr_obstacles_map_lon',  $lon);
-                    update_option('wcr_obstacles_map_zoom', $zoom);
-                    update_option('wcr_obstacles_map_rot',  $rot);
+                $lat=$req->get_param('lat'); $lon=$req->get_param('lon'); $zoom=$req->get_param('zoom');
+                $rot=(float)($req->get_param('rot')??0); $style=sanitize_text_field($req->get_param('style')?? 'voyager-nolabels');
+                $lat=(float)$lat; $lon=(float)$lon; $zoom=(float)$zoom;
+                $valid_styles=['voyager-nolabels','satellite','dark','light','satellite-labels'];
+                if (!in_array($style,$valid_styles,true)) $style='voyager-nolabels';
+                if ($lat<-90||$lat>90)   return new WP_Error('invalid','Lat ungültig',  ['status'=>400]);
+                if ($lon<-180||$lon>180) return new WP_Error('invalid','Lon ungültig',  ['status'=>400]);
+                if ($zoom<1||$zoom>21)   return new WP_Error('invalid','Zoom ungültig', ['status'=>400]);
+                if ($rot<-360||$rot>360) return new WP_Error('invalid','Rotation ungültig',['status'=>400]);
+                update_option('wcr_obstacles_map_lat_'.$mode,   $lat);
+                update_option('wcr_obstacles_map_lon_'.$mode,   $lon);
+                update_option('wcr_obstacles_map_zoom_'.$mode,  $zoom);
+                update_option('wcr_obstacles_map_rot_'.$mode,   $rot);
+                update_option('wcr_obstacles_map_style_'.$mode, $style);
+                if ($mode==='landscape') {
+                    update_option('wcr_obstacles_map_lat',$lat); update_option('wcr_obstacles_map_lon',$lon);
+                    update_option('wcr_obstacles_map_zoom',$zoom); update_option('wcr_obstacles_map_rot',$rot);
                 }
-
-                return rest_ensure_response([
-                    'ok'    => true,
-                    'mode'  => $mode,
-                    'lat'   => $lat,
-                    'lon'   => $lon,
-                    'zoom'  => $zoom,
-                    'rot'   => $rot,
-                    'style' => $style,
-                ]);
+                return rest_ensure_response(['ok'=>true,'mode'=>$mode,'lat'=>$lat,'lon'=>$lon,'zoom'=>$zoom,'rot'=>$rot,'style'=>$style]);
             },
             'permission_callback' => '__return_true',
         ],
     ]);
 
-    /* ══════════════════════════════════════════════════════════════════════════
+    /* ════════════════════════════════════════════════════════════════════════════
        UTILITY-ROUTEN
-    ══════════════════════════════════════════════════════════════════════════ */
+    ════════════════════════════════════════════════════════════════════════════ */
 
     register_rest_route('wakecamp/v1', '/item/(?P<id>[0-9]+)', [
         'methods'             => 'GET',
@@ -438,9 +410,9 @@ add_action('rest_api_init', function() {
         'permission_callback' => '__return_true',
     ]);
 
-    /* ══════════════════════════════════════════════════════════════════════════
+    /* ════════════════════════════════════════════════════════════════════════════
        🔒 GESCHÜTZTE VERWALTUNGS-ROUTEN
-    ══════════════════════════════════════════════════════════════════════════ */
+    ════════════════════════════════════════════════════════════════════════════ */
 
     register_rest_route('wakecamp/v1', '/ds-settings', [
         [
@@ -556,29 +528,20 @@ add_action('rest_api_init', function() {
         },
     ]);
 
-    /* ══════════════════════════════════════════════════════════════════════════
+    /* ════════════════════════════════════════════════════════════════════════════
        INSTAGRAM REST ENDPOINTS
-       Öffentlich – Daten bereits gefiltert durch WCR_Instagram Klasse
-    ══════════════════════════════════════════════════════════════════════════ */
+    ════════════════════════════════════════════════════════════════════════════ */
 
-    // ── Posts ──
     register_rest_route('wakecamp/v1', '/instagram', [
         'methods'             => 'GET',
         'callback'            => fn() => rest_ensure_response(WCR_Instagram::get_posts()),
         'permission_callback' => '__return_true',
     ]);
-
-    // ── Videos ──
     register_rest_route('wakecamp/v1', '/instagram/videos', [
         'methods'             => 'GET',
         'callback'            => fn() => rest_ensure_response(WCR_Instagram::get_videos()),
         'permission_callback' => '__return_true',
     ]);
-
-    // ── Status / Diagnose ──
-    // ✅ Fix #5: Frontend kann jetzt zwischen Token-Fehler und echtem leeren Feed unterscheiden
-    // Aufruf: GET /wp-json/wakecamp/v1/instagram/status
-    // Response: { token_set: true, uid_set: true, cache_ttl: 843, post_count: 8 }
     register_rest_route('wakecamp/v1', '/instagram/status', [
         'methods'             => 'GET',
         'callback'            => fn() => rest_ensure_response(WCR_Instagram::get_status()),
@@ -586,3 +549,122 @@ add_action('rest_api_init', function() {
     ]);
 
 });
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   wakecamp_playlist_check( WP_REST_Request $req )
+
+   GET /wp-json/wakecamp/v1/playlist-check
+
+   ?ids=3010,3089,3162          → prüft Nummern in allen Tabellen
+   &table=food                  → nur diese Tabelle
+   &typ=Burger                  → nur Einträge mit typ = 'Burger'
+   &mode=any|all                → Aktivierungsmodus
+══════════════════════════════════════════════════════════════════════════════ */
+function wakecamp_playlist_check( WP_REST_Request $req ) {
+
+    $allowed_tables = ['food','drinks','cable','camping','extra','ice'];
+
+    // ── Parameter ──
+    $ids_raw = sanitize_text_field( $req->get_param('ids') ?? '' );
+    $table   = sanitize_key( $req->get_param('table') ?? '' );
+    $typ     = sanitize_text_field( $req->get_param('typ') ?? '' );
+    $mode    = ( $req->get_param('mode') === 'all' ) ? 'all' : 'any';
+
+    // Tabelle validieren
+    if ( $table !== '' && ! in_array( $table, $allowed_tables, true ) ) {
+        return new WP_Error( 'invalid_table', 'Tabelle nicht erlaubt', ['status' => 400] );
+    }
+
+    // Tabellenliste
+    $tables = ( $table !== '' ) ? [ $table ] : $allowed_tables;
+
+    // ── Fallback: Nichts gesetzt → immer aktiv ──
+    if ( $ids_raw === '' && $typ === '' && $table === '' ) {
+        return rest_ensure_response([
+            'active' => true,
+            'count'  => 0,
+            'total'  => 0,
+            'mode'   => $mode,
+            'reason' => 'no_filter',
+        ]);
+    }
+
+    $db = get_ionos_db_connection();
+    if ( ! $db ) {
+        // Fail-open: DB-Fehler → Seite wird trotzdem geladen
+        return rest_ensure_response([
+            'active' => true,
+            'count'  => 0,
+            'total'  => 0,
+            'mode'   => $mode,
+            'reason' => 'db_error_fail_open',
+        ]);
+    }
+
+    // ── IDs-Modus ──
+    if ( $ids_raw !== '' ) {
+        $ids   = array_values( array_filter( array_map( 'intval', explode( ',', $ids_raw ) ) ) );
+        $total = count( $ids );
+
+        if ( $total === 0 ) {
+            return rest_ensure_response(['active'=>true,'count'=>0,'total'=>0,'mode'=>$mode,'reason'=>'ids_empty']);
+        }
+
+        $count_active = 0;
+        foreach ( $ids as $id ) {
+            foreach ( $tables as $tbl ) {
+                $stock = $db->get_var( $db->prepare(
+                    "SELECT stock FROM `{$tbl}` WHERE nummer = %d LIMIT 1", $id
+                ));
+                if ( $stock !== null && (int) $stock > 0 ) {
+                    $count_active++;
+                    break; // nächste ID
+                }
+            }
+        }
+
+        $active = ( $mode === 'all' )
+            ? ( $count_active === $total )
+            : ( $count_active > 0 );
+
+        return rest_ensure_response([
+            'active' => $active,
+            'count'  => $count_active,
+            'total'  => $total,
+            'mode'   => $mode,
+            'reason' => 'ids_' . $mode,
+        ]);
+    }
+
+    // ── Typ-Modus ──
+    if ( $typ !== '' ) {
+        $count_active = 0;
+        foreach ( $tables as $tbl ) {
+            $n = (int) $db->get_var( $db->prepare(
+                "SELECT COUNT(*) FROM `{$tbl}` WHERE typ = %s AND stock > 0", $typ
+            ));
+            $count_active += $n;
+        }
+        return rest_ensure_response([
+            'active' => $count_active > 0,
+            'count'  => $count_active,
+            'total'  => null, // Gesamtzahl unbekannt ohne extra Query
+            'mode'   => $mode,
+            'reason' => 'typ',
+        ]);
+    }
+
+    // ── Nur Tabelle(n) ──
+    $count_active = 0;
+    foreach ( $tables as $tbl ) {
+        $n = (int) $db->get_var( "SELECT COUNT(*) FROM `{$tbl}` WHERE stock > 0" );
+        $count_active += $n;
+    }
+    return rest_ensure_response([
+        'active' => $count_active > 0,
+        'count'  => $count_active,
+        'total'  => null,
+        'mode'   => $mode,
+        'reason' => 'table',
+    ]);
+}

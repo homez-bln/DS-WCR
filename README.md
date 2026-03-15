@@ -11,7 +11,7 @@
 
 ## 📋 Projekt-Übersicht
 
-**WCR Digital Signage** ist eine spezialisierte Lösung zur Verwaltung und Anzeige von Content (Menükarten, Preislisten, Wetterdaten, Kino-Programm, etc.) auf Digital Signage Displays.
+**WCR Digital Signage** ist eine spezialisierte Lösung zur Verwaltung und Anzeige von Content (Menükaarten, Preislisten, Wetterdaten, Kino-Programm, etc.) auf Digital Signage Displays.
 
 ### Kernfunktionen
 
@@ -19,8 +19,9 @@
 - 💰 **Preislisten** – Cable-Park, Camping, dynamische Preisänderungen
 - 🌤️ **Live-Daten** – Wetter-Widget, Windkarte mit Open-Meteo API
 - 🎬 **Content-Management** – Kino-Programm, Obstacles-Verwaltung
-- 🎟️ **Ticket-System** – Event-Tickets mit Live-Status
+- 🏟️ **Ticket-System** – Event-Tickets mit Live-Status
 - 👥 **Benutzer-Verwaltung** – Rollen-basiertes Zugriffssystem
+- 📺 **DS-Seiten Steuerung** – Seiten per DB-Status an/ausschalten (piSignage)
 
 ---
 
@@ -60,15 +61,6 @@
 └─────────────────────────────────────┘
 ```
 
-### Warum zwei Systeme?
-
-| Vorteil | Beschreibung |
-|---------|-------------|
-| ⚡ **Performance** | Plugin: WordPress-optimiert, Backend: direkter DB-Zugriff |
-| 🔒 **Sicherheit** | Strikte Trennung: Öffentlich vs. geschützt |
-| 🧹 **Wartbarkeit** | Klare Code-Organisation, keine Vermischung |
-| 🎯 **Fokus** | Plugin für Anzeige, Backend für Verwaltung |
-
 ---
 
 ## 🚀 Schnelleinstieg für Entwickler
@@ -80,13 +72,6 @@
 - **MySQL/MariaDB:** Version 5.7+
 - **Git:** Für Deployment
 - **GitHub Actions:** Für automatisches Deployment
-
-### Repository klonen
-
-```bash
-git clone https://github.com/homez-bln/wcr-digital-signage.git
-cd wcr-digital-signage
-```
 
 ### Verzeichnisstruktur (Reale Dateiorte)
 
@@ -102,93 +87,28 @@ wcr-digital-signage/
 │   │   ├── shortcodes-display.php   # Display-Shortcodes (Wetter, Windkarte)
 │   │   ├── shortcodes-widgets.php   # Widget-Shortcodes (Animationen)
 │   │   ├── shortcode-kino.php    # Legacy Kino-Shortcode
-│   │   ├── shortcode-produkte.php   # Legacy Produkte-Shortcode
+│   │   ├── shortcode-produkte.php   # Produkte Spotlight (stock=0 wird nicht gerendert)
+│   │   ├── ds-pages.php          # DS-Seiten Aktivierungssystem (is_ds_page_active())
+│   │   ├── admin-ds-pages.php    # WP-Admin: DS-Seiten verwalten
 │   │   ├── instagram.php         # Instagram-API-Klasse
 │   │   ├── screenshot.php        # Screenshot-Generator
 │   │   ├── enqueue.php           # CSS/JS Assets Enqueue
 │   │   └── db.php                # WordPress-DB-Connection
 │   └── assets/                   # Frontend-Assets
-│       ├── css/                  # Plugin-Styles
-│       │   ├── wcr-ds-global.css       # Globale Styles
-│       │   ├── wcr-ds-components.css   # Komponenten
-│       │   ├── wcr-ds-landscape.css    # Landscape-Layout
-│       │   ├── wcr-ds-portrait.css     # Portrait-Layout
-│       │   ├── wcr-ds-unified.css      # Unified Design System
-│       │   ├── wcr-ds-theme-glass.css  # Theme: Glass
-│       │   ├── wcr-produkte.css        # Produkte-Styles
-│       │   ├── wcr-kino-slider.css     # Kino-Slider
-│       │   ├── wcr-instagram.css       # Instagram-Widget
-│       │   ├── wcr-instagram-video.css # Instagram-Video
-│       │   ├── wcr-obstacles-map.css   # Obstacles-Karte
-│       │   └── themes/                 # Theme-Unterordner
-│       └── js/                   # Plugin-JavaScript
-│           ├── wcr-frontend.js   # Hauptlogik
-│           ├── wcr-wetter.js     # Wetter-Widget
-│           └── ...
 │
 ├── be/                           # Standalone Backend
-│   ├── index.php                 # Dashboard
-│   ├── login.php                 # Login-Seite
-│   ├── logout.php                # Logout
-│   ├── update_ticket.php         # Ticket-Update (Legacy)
+│   ├── index.php
 │   ├── inc/
 │   │   ├── auth.php              # Session + Rollen + CSRF
 │   │   ├── db.php                # DB-Verbindung (PDO)
-│   │   ├── menu.php              # Navigation
-│   │   ├── style.css             # ✅ Backend-Styles (NICHT be/css/!)
-│   │   └── debug.php             # Debug-Panel
-│   ├── ctrl/                     # Controller (Seiten)
-│   │   ├── drinks.php
-│   │   ├── food.php
-│   │   ├── times.php
-│   │   ├── kino.php
-│   │   ├── obstacles.php
-│   │   ├── ds-seiten.php
-│   │   ├── ds-settings.php
-│   │   ├── users.php
+│   │   ├── ds-rules.json         # DS-Seiten Regelwerk (auto generiert)
 │   │   └── ...
-│   ├── api/                      # REST-APIs (Write)
-│   │   ├── drinks.php
-│   │   ├── food.php
-│   │   ├── users.php
+│   ├── ctrl/
+│   │   ├── ds-seiten.php         # DS-Seiten Vorschau + Aktivierungssteuerung
 │   │   └── ...
-│   ├── js/                       # Backend-JavaScript
-│   ├── img/                      # Backend-Images
-│   └── _deprecated/              # Archiv alter Dateien
-│       └── README.md
-│
-├── .github/workflows/deploy.yml  # GitHub Actions Deployment
-├── ARCHITECTURE.md               # 📚 Vollständige technische Dokumentation
-├── CHANGELOG.md                  # Änderungsprotokoll
-└── README.md                     # Diese Datei
+│   └── ...
+└── README.md
 ```
-
-### Erste Schritte
-
-**1. Plugin installieren:**
-```bash
-# wcr-digital-signage/ nach WordPress-Plugin-Verzeichnis kopieren
-cp -r wcr-digital-signage /path/to/wordpress/wp-content/plugins/
-```
-
-**2. Backend installieren:**
-```bash
-# be/ nach WebSpace-Root kopieren
-cp -r be /path/to/webspace/be/
-```
-
-**3. Datenbank konfigurieren:**
-```bash
-# DB-Credentials in be/inc/db.php eintragen
-# Tabellen-Schema in be/sql/ ausführen (falls vorhanden)
-```
-
-**4. Plugin aktivieren:**
-- WordPress-Admin → Plugins → "WCR Digital Signage" aktivieren
-
-**5. Backend-Login:**
-- Browser: `https://your-domain.de/be/login.php`
-- Credentials: Siehe Backend-Admin
 
 ---
 
@@ -221,7 +141,7 @@ cp -r be /path/to/webspace/be/
 
 ### Plugin REST-API (Read-Only)
 
-**Namespace:** `wakecamp/v1` *(nicht `wcr/v1`!)*
+**Namespace:** `wakecamp/v1`
 
 | Route | Zweck | Zugriff |
 |-------|-------|--------|
@@ -234,21 +154,51 @@ cp -r be /path/to/webspace/be/
 | `GET /wakecamp/v1/events` | Events | ✅ Öffentlich |
 | `GET /wakecamp/v1/obstacles` | Obstacles-Map | ✅ Öffentlich |
 | `GET /wakecamp/v1/instagram` | Instagram-Posts | ✅ Öffentlich |
+| `GET /wakecamp/v1/playlist-check` | Prüft ob Playlist/Seite aktiv ist (stock > 0) | ✅ Öffentlich |
+
+**`/playlist-check` Parameter:**
+
+| Parameter | Typ | Beschreibung |
+|-----------|-----|--------------|
+| `ids` | string | Komma-getrennte Produktnummern (z.B. `3010,3089,3162`) |
+| `table` | string | Optional: Tabelle eingrenzen (`food`, `drinks`, `cable`, `camping`, `extra`, `ice`) |
+| `typ` | string | Optional: Typ-Filter (z.B. `Burger`) |
+| `mode` | string | `any` (Standard) oder `all` |
+
+**Response:**
+```json
+{ "active": true, "count": 2, "total": 3, "mode": "any", "reason": "ids_any" }
+```
+
+**Beispiele:**
+```
+# Einzelne IDs prüfen (mode=any: mind. 1 aktiv)
+/wp-json/wakecamp/v1/playlist-check?ids=3010,3089,3162
+
+# Alle müssen aktiv sein
+/wp-json/wakecamp/v1/playlist-check?ids=3010,3089&mode=all
+
+# Typ prüfen (alle Burger in food)
+/wp-json/wakecamp/v1/playlist-check?table=food&typ=Burger
+
+# Ganze Tabelle prüfen
+/wp-json/wakecamp/v1/playlist-check?table=food
+```
 
 **Sonderfälle:**
 
-| Route | Methoden | Zugriff | Status |
-|-------|----------|---------|--------|
-| `/wakecamp/v1/obstacles/map-config` | GET | ✅ Öffentlich | ✅ Bleibt so |
-| `/wakecamp/v1/obstacles/map-config` | POST | 🔒 Secret/Admin | ⚠️ TODO: Ins Backend |
-| `/wakecamp/v1/ds-settings` | GET/POST | 🔒 Admin | ⚠️ TODO: Ins Backend |
+| Route | Methoden | Zugriff |
+|-------|----------|---------|
+| `/wakecamp/v1/obstacles/map-config` | GET | ✅ Öffentlich |
+| `/wakecamp/v1/obstacles/map-config` | POST | 🔒 Secret/Admin |
+| `/wakecamp/v1/ds-settings` | GET/POST | 🔒 Admin |
 
 ### Backend REST-API (Write)
 
 **Basis-URL:** `https://your-domain.de/be/api/`
 
 | API | HTTP-Methoden | Zugriff |
-|-----|---------------|--------|
+|-----|---------------|---------|
 | `be/api/drinks.php` | POST, PUT, DELETE | 🔒 Session + CSRF |
 | `be/api/food.php` | POST, PUT, DELETE | 🔒 Session + CSRF |
 | `be/api/users.php` | POST, PUT, DELETE | 🔒 Session + CSRF |
@@ -275,6 +225,41 @@ cp -r be /path/to/webspace/be/
 **Widget-Shortcodes (Animationen):**
 - `[wcr_starter_pack]` – Starter-Pack-Animation (GSAP)
 
+**Produkt-Spotlight:**
+- `[wcr_produkte id1="..." id2="..." id3="..." table="food" typ="Burger" mode="any"]`
+  - `stock=0` → Produkt wird nicht gerendert
+  - Alle Produkte `stock=0` → Shortcode gibt leeren Output (piSignage lädt Seite nicht)
+
+---
+
+## 📺 DS-Seiten Steuerung
+
+Jede WordPress-DS-Seite kann im Backend `/be/ctrl/ds-seiten.php` mit einer Aktivierungsregel verknüpft werden.
+
+### Regel-Felder
+
+| Feld | Beschreibung |
+|------|--------------|
+| **Override** | `auto` (DB-Check) / `force_on` / `force_off` |
+| **Tabellen** | Welche Tabellen geprüft werden (leer = alle 6) |
+| **Typ** | Typ-Filter z.B. `Burger` – prüft `WHERE typ = ? AND stock > 0` |
+| **IDs** | Komma-Liste von `nummer`-Werten |
+| **Mode** | `any` = mind. 1 aktiv / `all` = alle müssen aktiv sein |
+
+### Logik
+
+```
+Typ "Burger" in food → mind. 1 Burger stock > 0
+  → ✅ Seite wird von piSignage geladen
+  → Produkte mit stock=0 werden im Shortcode übersprungen
+  → Produkte mit stock > 0 werden normal angezeigt
+
+Alle Burger stock = 0
+  → ⛔ Seite wird NICHT geladen (Shortcode gibt nur HTML-Kommentare zurück)
+```
+
+Regeln werden in `be/inc/ds-rules.json` gespeichert.
+
 ---
 
 ## 🚀 Deployment
@@ -288,81 +273,8 @@ cp -r be /path/to/webspace/be/
 **Deployment-Prozess:**
 1. Code auschecken
 2. SFTP-Upload zu IONOS WebSpace
-3. Delete-Mode: Alte Dateien entfernen (Deploy-Hygiene)
+3. Delete-Mode: Alte Dateien entfernen
 4. Exclude: `.git/`, `.github/`, `node_modules/`
-
-**Konfiguration:** `.github/workflows/deploy.yml`
-
-**Secrets:** `FTP_SERVER`, `FTP_USERNAME`, `FTP_PASSWORD`
-
----
-
-## 📚 Vollständige Dokumentation
-
-**Für detaillierte technische Informationen siehe:**
-
-👉 **[ARCHITECTURE.md](ARCHITECTURE.md)** – Vollständige Architektur-Dokumentation (40+ Seiten)
-
-**Themen:**
-- Architektur-Prinzipien
-- Verzeichnisstruktur
-- Sicherheitskonzept (Session, CSRF, Rollen)
-- REST-API-Konzept
-- Shortcode-System
-- CSS-Trennung
-- Deployment-Workflow
-- Entwicklerregeln
-- Best Practices
-
----
-
-## 🛠️ Development-Workflow
-
-### Neue Feature entwickeln
-
-**1. Branch erstellen:**
-```bash
-git checkout -b feature/neue-funktion
-```
-
-**2. Code schreiben:**
-- Plugin-Code: `wcr-digital-signage/`
-- Backend-Code: `be/`
-- **WICHTIG:** Plugin und Backend nicht vermischen!
-
-**3. Testen:**
-- Lokaler WordPress-Server
-- Backend-Login testen
-- Shortcodes in Elementor testen
-
-**4. Commit & Push:**
-```bash
-git add .
-git commit -m "✨ Feature: Neue Funktion hinzugefügt"
-git push origin feature/neue-funktion
-```
-
-**5. Pull Request:**
-- GitHub: Create Pull Request
-- Review durch Team
-- Merge in `main` → Automatisches Deployment
-
-### Coding-Standards
-
-**Plugin (wcr-digital-signage/):**
-- ✅ Nur Read-Only REST-APIs
-- ✅ Shortcodes für Frontend-Ausgabe
-- ✅ CSS/JS via `wp_enqueue_style`/`wp_enqueue_script`
-- ❌ Keine schreibenden Operationen
-- ❌ Kein Session-Management
-
-**Backend (be/):**
-- ✅ Session-basiertes Login (`require_login()`)
-- ✅ Berechtigungsprüfung (`wcr_require()`)
-- ✅ CSRF-Protection (`wcr_verify_csrf()`)
-- ✅ Write-REST-APIs (POST/PUT/DELETE)
-- ❌ Keine Frontend-Ausgabe
-- ❌ Keine Shortcodes
 
 ---
 
@@ -376,18 +288,9 @@ Siehe [CHANGELOG.md](wcr-digital-signage/CHANGELOG.md) für detaillierte Änderu
 
 **Entwickler:** Marcus Kempe  
 **E-Mail:** marcus.kempe88@gmail.com  
-**Repository:** [github.com/homez-bln/wcr-digital-signage](https://github.com/homez-bln/wcr-digital-signage)
-
----
-
-## 📄 Lizenz
-
-**Proprietary** – Alle Rechte vorbehalten.
-
-Dieses Projekt ist für den internen Einsatz in der WCR-Freizeiteinrichtung entwickelt.
-Keine Weitergabe oder kommerzielle Nutzung ohne Genehmigung.
+**Repository:** [github.com/homez-bln/DS-WCR](https://github.com/homez-bln/DS-WCR)
 
 ---
 
 **Stand:** März 2026  
-**Version:** 2.0
+**Version:** 2.1
