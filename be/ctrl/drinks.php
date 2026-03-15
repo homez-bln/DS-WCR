@@ -1,14 +1,11 @@
 <?php
 /**
  * ctrl/drinks.php
- * FIX v6: Direkter DB-Zugriff statt cURL → get_tickets.php → DB.
- * SECURITY v9: Erfordert edit_products Permission + CSRF-Token im Body
- * DRAWER v10: + Neuer-Artikel Button/Drawer (create_products Permission)
+ * MODAL v11: Drawer ersetzt durch FAB + Modal-Popup
  */
 require_once __DIR__ . '/../inc/auth.php';
 require_once __DIR__ . '/../inc/db.php';
 
-// ── SECURITY: Login + Permission erforderlich ──
 wcr_require('edit_products');
 
 $_canPrice  = wcr_can('edit_prices');
@@ -17,10 +14,8 @@ $_canCreate = wcr_can('create_products');
 $DB_TABLE   = 'drinks';
 $PAGE_TITLE = 'Getränke';
 
-// FIX: Direkter DB-Zugriff
 $tickets = $pdo->query("SELECT * FROM `{$DB_TABLE}` ORDER BY typ ASC, nummer ASC")->fetchAll();
 
-// Typ-Liste für Drawer-Dropdown
 $typen = array_unique(array_map(fn($r) => trim($r['typ'] ?? ''), $tickets));
 sort($typen);
 
@@ -42,14 +37,9 @@ ksort($grouped);
 
 <div class="header-controls">
   <h1>🍺 <?= htmlspecialchars($PAGE_TITLE) ?></h1>
-  <div style="display:flex;gap:10px;align-items:center;">
-    <?php if ($_canCreate): ?>
-    <button class="btn-new-item" onclick="openDrawer()">＋ Artikel</button>
-    <?php endif; ?>
-    <div class="view-switcher">
-      <button onclick="setView('list')"    id="btn-list"    class="active">Liste</button>
-      <button onclick="setView('gallery')" id="btn-gallery">Galerie</button>
-    </div>
+  <div class="view-switcher">
+    <button onclick="setView('list')"    id="btn-list"    class="active">Liste</button>
+    <button onclick="setView('gallery')" id="btn-gallery">Galerie</button>
   </div>
 </div>
 
@@ -58,7 +48,6 @@ ksort($grouped);
 <?php else: ?>
 
 <div id="items-container" class="view-list">
-
   <div class="item-header">
     <div class="item-cell cell-active">Aktiv</div>
     <div class="item-cell cell-nr">Nr.</div>
@@ -121,7 +110,7 @@ ksort($grouped);
                onchange="upd(this,'price')" data-nr="<?= (int)$t['nummer'] ?>">
       </div>
       <?php else: ?>
-      <div class="item-cell cell-price" style="color:#86868b; font-size:13px; padding-left:8px;">
+      <div class="item-cell cell-price" style="color:#86868b;font-size:13px;padding-left:8px;">
         <?= number_format((float)($t['preis'] ?? 0), 2, ',', '') ?>&nbsp;€
       </div>
       <?php endif; ?>
@@ -131,99 +120,97 @@ ksort($grouped);
     <?php endforeach; ?>
   </div>
   <?php endforeach; ?>
-
 </div>
 <?php endif; ?>
 
 <?php if ($_canCreate): ?>
-<!-- ── Overlay ── -->
-<div id="drawer-overlay" onclick="closeDrawer()"></div>
+<!-- ── FAB ── -->
+<button id="fab-new-item" onclick="niOpen()" title="Neues Getränk anlegen">＋</button>
 
-<!-- ── Drawer ── -->
-<div id="new-item-drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-heading">
-  <div class="drawer-header">
-    <div class="drawer-title">
-      <span class="drawer-icon">🍺</span>
-      <h2 id="drawer-heading">Neues Getränk</h2>
-    </div>
-    <button class="drawer-close" onclick="closeDrawer()" aria-label="Schließen">✕</button>
+<!-- ── Overlay ── -->
+<div id="ni-overlay" onclick="niClose()"></div>
+
+<!-- ── Modal ── -->
+<div id="new-item-modal" role="dialog" aria-modal="true" aria-labelledby="ni-heading">
+  <div class="ni-header">
+    <div class="ni-title"><span class="ni-icon">🍺</span><span id="ni-heading">Neues Getränk</span></div>
+    <button class="ni-close" onclick="niClose()" aria-label="Schließen">✕</button>
   </div>
-  <form id="new-item-form" onsubmit="submitNewItem(event)" novalidate>
-    <div class="drawer-field">
-      <label for="di-produkt">Produktname <span class="field-required">*</span></label>
-      <input type="text" id="di-produkt" name="produkt" autocomplete="off" required
+  <form class="ni-body" id="ni-form" onsubmit="niSubmit(event)" novalidate>
+    <div class="ni-field">
+      <label for="ni-produkt">Produktname *</label>
+      <input type="text" id="ni-produkt" name="produkt" autocomplete="off" required
              placeholder="z.B. Coca-Cola 0,33l">
     </div>
-    <div class="drawer-field">
-      <label for="di-menge">Menge / Größe</label>
-      <input type="text" id="di-menge" name="menge" autocomplete="off"
-             placeholder="z.B. 0,33l">
-      <span class="field-hint">Optional – wird in der Liste angezeigt</span>
+    <div class="ni-row2">
+      <div class="ni-field">
+        <label for="ni-menge">Menge</label>
+        <input type="text" id="ni-menge" name="menge" autocomplete="off" placeholder="z.B. 0,33l">
+      </div>
+      <div class="ni-field">
+        <label for="ni-preis">Preis (€)</label>
+        <input type="number" id="ni-preis" name="preis" step="0.01" min="0" value="0.00">
+      </div>
     </div>
-    <div class="drawer-field">
-      <label for="di-preis">Preis (€)</label>
-      <input type="number" id="di-preis" name="preis" step="0.01" min="0" value="0.00">
-    </div>
-    <div class="drawer-field">
-      <label for="di-typ">Gruppe / Typ</label>
-      <input type="text" id="di-typ" name="typ" autocomplete="off"
-             list="typ-list-drinks" placeholder="z.B. Bier, Softdrinks …">
-      <datalist id="typ-list-drinks">
+    <div class="ni-field">
+      <label for="ni-typ">Gruppe</label>
+      <input type="text" id="ni-typ" name="typ" autocomplete="off"
+             list="ni-typ-list" placeholder="z.B. Bier, Softdrinks …">
+      <datalist id="ni-typ-list">
         <?php foreach ($typen as $tv): ?>
         <option value="<?= htmlspecialchars($tv) ?>">
         <?php endforeach; ?>
       </datalist>
     </div>
-    <div class="drawer-field drawer-field-toggle">
-      <span class="toggle-label">Sofort aktiv (Stock an)</span>
+    <div class="ni-toggle-row">
+      <span class="ni-toggle-label">Sofort aktiv</span>
       <label class="switch">
-        <input type="checkbox" id="di-stock" name="stock" checked>
+        <input type="checkbox" id="ni-stock" name="stock" checked>
         <span class="slider round"></span>
       </label>
     </div>
-    <div id="drawer-msg" class="drawer-msg" style="display:none"></div>
-    <div class="drawer-actions">
-      <button type="button" class="btn-secondary" onclick="closeDrawer()">Abbrechen</button>
-      <button type="submit" class="btn-upload" id="drawer-submit">Artikel anlegen</button>
-    </div>
+    <div id="ni-msg" class="ni-msg"></div>
   </form>
+  <div class="ni-footer">
+    <button type="button" class="btn-secondary" onclick="niClose()">Abbrechen</button>
+    <button type="submit" form="ni-form" class="btn-upload" id="ni-submit">Anlegen</button>
+  </div>
 </div>
 
 <script>
-function openDrawer() {
-    document.getElementById('new-item-drawer').classList.add('open');
-    document.getElementById('drawer-overlay').classList.add('open');
-    document.getElementById('di-produkt').focus();
-    document.getElementById('drawer-msg').style.display = 'none';
-    document.getElementById('new-item-form').reset();
-    document.getElementById('di-stock').checked = true;
+function niOpen()  {
+    document.getElementById('ni-overlay').classList.add('open');
+    document.getElementById('new-item-modal').classList.add('open');
+    document.getElementById('ni-form').reset();
+    document.getElementById('ni-stock').checked = true;
+    const m = document.getElementById('ni-msg');
+    m.className = 'ni-msg'; m.textContent = '';
+    setTimeout(() => document.getElementById('ni-produkt').focus(), 80);
 }
-function closeDrawer() {
-    document.getElementById('new-item-drawer').classList.remove('open');
-    document.getElementById('drawer-overlay').classList.remove('open');
+function niClose() {
+    document.getElementById('ni-overlay').classList.remove('open');
+    document.getElementById('new-item-modal').classList.remove('open');
 }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') niClose(); });
 
-async function submitNewItem(e) {
+async function niSubmit(e) {
     e.preventDefault();
-    const btn = document.getElementById('drawer-submit');
-    const msg = document.getElementById('drawer-msg');
-    const produkt = document.getElementById('di-produkt').value.trim();
+    const btn = document.getElementById('ni-submit');
+    const msg = document.getElementById('ni-msg');
+    const produkt = document.getElementById('ni-produkt').value.trim();
     if (!produkt) {
         msg.textContent = 'Produktname ist Pflicht.';
-        msg.className = 'drawer-msg err';
-        msg.style.display = 'block';
+        msg.className = 'ni-msg err';
         return;
     }
-    btn.disabled = true;
-    btn.textContent = '…';
+    btn.disabled = true; btn.textContent = '…';
     const payload = {
         produkt,
-        menge:   document.getElementById('di-menge').value.trim(),
-        preis:   parseFloat(document.getElementById('di-preis').value) || 0,
-        typ:     document.getElementById('di-typ').value.trim() || 'Sonstige',
-        stock:   document.getElementById('di-stock').checked ? 1 : 0,
-        csrf:    document.body.dataset.csrf || ''
+        menge:  document.getElementById('ni-menge').value.trim(),
+        preis:  parseFloat(document.getElementById('ni-preis').value) || 0,
+        typ:    document.getElementById('ni-typ').value.trim() || 'Sonstige',
+        stock:  document.getElementById('ni-stock').checked ? 1 : 0,
+        csrf:   document.body.dataset.csrf || ''
     };
     try {
         const res  = await fetch('/be/api/create.php?t=drinks', {
@@ -233,31 +220,24 @@ async function submitNewItem(e) {
         });
         const data = await res.json();
         if (data.ok) {
-            msg.textContent = '✅ Artikel angelegt (ID ' + data.id + '). Seite wird neu geladen…';
-            msg.className = 'drawer-msg ok';
-            msg.style.display = 'block';
-            setTimeout(() => location.reload(), 1200);
+            msg.textContent = '✅ Angelegt (ID ' + data.id + ') – Seite lädt neu …';
+            msg.className = 'ni-msg ok';
+            setTimeout(() => location.reload(), 1100);
         } else {
-            msg.textContent = '❌ ' + (data.error || 'Unbekannter Fehler');
-            msg.className = 'drawer-msg err';
-            msg.style.display = 'block';
-            btn.disabled = false;
-            btn.textContent = 'Artikel anlegen';
+            msg.textContent = '❌ ' + (data.error || 'Fehler');
+            msg.className = 'ni-msg err';
+            btn.disabled = false; btn.textContent = 'Anlegen';
         }
     } catch (err) {
         msg.textContent = '❌ Netzwerkfehler: ' + err.message;
-        msg.className = 'drawer-msg err';
-        msg.style.display = 'block';
-        btn.disabled = false;
-        btn.textContent = 'Artikel anlegen';
+        msg.className = 'ni-msg err';
+        btn.disabled = false; btn.textContent = 'Anlegen';
     }
 }
 </script>
 <?php endif; ?>
 
-<script>
-const TABLE = 'drinks';
-</script>
+<script>const TABLE = 'drinks';</script>
 <script src="/be/js/ctrl-shared.js"></script>
 <?php if (wcr_is_admin()) include __DIR__ . '/../inc/img-upload-modal.php'; ?>
 <?php include __DIR__ . '/../inc/debug.php'; ?>
