@@ -2,8 +2,8 @@
 /**
  * ctrl/food.php
  * FIX v6: Direkter DB-Zugriff, kein cURL-Roundtrip mehr.
- *         Gruppen-Toggle (OFFEN/GESCHLOSSEN) bleibt erhalten.
  * SECURITY v9: Erfordert edit_products Permission + CSRF-Token
+ * DRAWER v10: + Neuer-Artikel Button/Drawer (create_products Permission)
  */
 require_once __DIR__ . '/../inc/auth.php';
 require_once __DIR__ . '/../inc/db.php';
@@ -11,13 +11,18 @@ require_once __DIR__ . '/../inc/db.php';
 // ── SECURITY: Login + Permission erforderlich ──
 wcr_require('edit_products');
 
-$_canPrice = wcr_can('edit_prices');
+$_canPrice  = wcr_can('edit_prices');
+$_canCreate = wcr_can('create_products');
 
 $DB_TABLE   = 'food';
 $PAGE_TITLE = 'Essen';
 
 // FIX: Direkter DB-Zugriff
 $tickets = $pdo->query("SELECT * FROM `{$DB_TABLE}` ORDER BY typ ASC, nummer ASC")->fetchAll();
+
+// Typ-Liste für Drawer-Dropdown
+$typen = array_unique(array_map(fn($r) => trim($r['typ'] ?? ''), $tickets));
+sort($typen);
 
 // Gruppen-Status
 try {
@@ -58,9 +63,14 @@ ksort($grouped);
 
 <div class="header-controls">
   <h1>🍔 <?= htmlspecialchars($PAGE_TITLE) ?></h1>
-  <div class="view-switcher">
-    <button onclick="setView('list')"    id="btn-list"    class="active">Liste</button>
-    <button onclick="setView('gallery')" id="btn-gallery">Galerie</button>
+  <div style="display:flex;gap:10px;align-items:center;">
+    <?php if ($_canCreate): ?>
+    <button class="btn-new-item" onclick="openDrawer()">＋ Artikel</button>
+    <?php endif; ?>
+    <div class="view-switcher">
+      <button onclick="setView('list')"    id="btn-list"    class="active">Liste</button>
+      <button onclick="setView('gallery')" id="btn-gallery">Galerie</button>
+    </div>
   </div>
 </div>
 
@@ -77,7 +87,6 @@ ksort($grouped);
       $onOff    = $gruppeAn ? 'gruppe-on' : 'gruppe-off';
   ?>
 
-  <!-- Group header (shared between list + gallery view) -->
   <div class="group-header <?= $onOff ?>"
        data-group="<?= htmlspecialchars($gKey) ?>"
        data-groupkey="<?= htmlspecialchars($gKey) ?>"
@@ -157,18 +166,125 @@ ksort($grouped);
 </div>
 <?php endif; ?>
 
+<?php if ($_canCreate): ?>
+<div id="drawer-overlay" onclick="closeDrawer()"></div>
+<div id="new-item-drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-heading">
+  <div class="drawer-header">
+    <div class="drawer-title">
+      <span class="drawer-icon">🍔</span>
+      <h2 id="drawer-heading">Neues Gericht</h2>
+    </div>
+    <button class="drawer-close" onclick="closeDrawer()" aria-label="Schließen">✕</button>
+  </div>
+  <form id="new-item-form" onsubmit="submitNewItem(event)" novalidate>
+    <div class="drawer-field">
+      <label for="di-produkt">Produktname <span class="field-required">*</span></label>
+      <input type="text" id="di-produkt" name="produkt" autocomplete="off" required
+             placeholder="z.B. Pommes Frites">
+    </div>
+    <div class="drawer-field">
+      <label for="di-menge">Menge / Größe</label>
+      <input type="text" id="di-menge" name="menge" autocomplete="off" placeholder="z.B. Portion">
+      <span class="field-hint">Optional</span>
+    </div>
+    <div class="drawer-field">
+      <label for="di-preis">Preis (€)</label>
+      <input type="number" id="di-preis" name="preis" step="0.01" min="0" value="0.00">
+    </div>
+    <div class="drawer-field">
+      <label for="di-typ">Gruppe / Typ</label>
+      <input type="text" id="di-typ" name="typ" autocomplete="off"
+             list="typ-list-food" placeholder="z.B. Snacks, Hauptspeisen …">
+      <datalist id="typ-list-food">
+        <?php foreach ($typen as $tv): ?>
+        <option value="<?= htmlspecialchars($tv) ?>">
+        <?php endforeach; ?>
+      </datalist>
+    </div>
+    <div class="drawer-field drawer-field-toggle">
+      <span class="toggle-label">Sofort aktiv (Stock an)</span>
+      <label class="switch">
+        <input type="checkbox" id="di-stock" name="stock" checked>
+        <span class="slider round"></span>
+      </label>
+    </div>
+    <div id="drawer-msg" class="drawer-msg" style="display:none"></div>
+    <div class="drawer-actions">
+      <button type="button" class="btn-secondary" onclick="closeDrawer()">Abbrechen</button>
+      <button type="submit" class="btn-upload" id="drawer-submit">Artikel anlegen</button>
+    </div>
+  </form>
+</div>
+
+<script>
+function openDrawer() {
+    document.getElementById('new-item-drawer').classList.add('open');
+    document.getElementById('drawer-overlay').classList.add('open');
+    document.getElementById('di-produkt').focus();
+    document.getElementById('drawer-msg').style.display = 'none';
+    document.getElementById('new-item-form').reset();
+    document.getElementById('di-stock').checked = true;
+}
+function closeDrawer() {
+    document.getElementById('new-item-drawer').classList.remove('open');
+    document.getElementById('drawer-overlay').classList.remove('open');
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+
+async function submitNewItem(e) {
+    e.preventDefault();
+    const btn = document.getElementById('drawer-submit');
+    const msg = document.getElementById('drawer-msg');
+    const produkt = document.getElementById('di-produkt').value.trim();
+    if (!produkt) {
+        msg.textContent = 'Produktname ist Pflicht.';
+        msg.className = 'drawer-msg err';
+        msg.style.display = 'block';
+        return;
+    }
+    btn.disabled = true; btn.textContent = '…';
+    const payload = {
+        produkt,
+        menge:  document.getElementById('di-menge').value.trim(),
+        preis:  parseFloat(document.getElementById('di-preis').value) || 0,
+        typ:    document.getElementById('di-typ').value.trim() || 'Sonstige',
+        stock:  document.getElementById('di-stock').checked ? 1 : 0,
+        csrf:   document.body.dataset.csrf || ''
+    };
+    try {
+        const res  = await fetch('/be/api/create.php?t=food', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.ok) {
+            msg.textContent = '✅ Artikel angelegt (ID ' + data.id + '). Seite wird neu geladen…';
+            msg.className = 'drawer-msg ok'; msg.style.display = 'block';
+            setTimeout(() => location.reload(), 1200);
+        } else {
+            msg.textContent = '❌ ' + (data.error || 'Unbekannter Fehler');
+            msg.className = 'drawer-msg err'; msg.style.display = 'block';
+            btn.disabled = false; btn.textContent = 'Artikel anlegen';
+        }
+    } catch (err) {
+        msg.textContent = '❌ Netzwerkfehler: ' + err.message;
+        msg.className = 'drawer-msg err'; msg.style.display = 'block';
+        btn.disabled = false; btn.textContent = 'Artikel anlegen';
+    }
+}
+</script>
+<?php endif; ?>
+
 <script>
 const TABLE = 'food';
 </script>
 <script src="/be/js/ctrl-shared.js"></script>
 <script>
-// FIX: updGruppe() muss NACH ctrl-shared.js kommen, da es getCsrfToken() verwendet
 function updGruppe(checkbox) {
     const typ      = checkbox.getAttribute('data-typ');
     const groupKey = checkbox.getAttribute('data-groupkey');
     const aktiv    = checkbox.checked ? 1 : 0;
 
-    // Alle Header mit diesem key synchron halten
     document.querySelectorAll('[data-groupkey="' + groupKey + '"]').forEach(el => {
         el.classList.toggle('gruppe-off', !checkbox.checked);
         el.classList.toggle('gruppe-on',   checkbox.checked);
@@ -180,7 +296,6 @@ function updGruppe(checkbox) {
     const body = document.querySelector('[data-group-body="' + groupKey + '"]');
     if (body) body.classList.toggle('gruppe-off', !checkbox.checked);
 
-    // ── CSRF-Token mitschicken ──
     const params = new URLSearchParams();
     params.append('table', 'wp_food_gruppen');
     params.append('nummer', typ);
@@ -195,10 +310,7 @@ function updGruppe(checkbox) {
     })
     .then(r => r.json())
     .then(d => {
-        // ── Token-Rotation: Neues Token nach Response speichern ──
-        if (d.csrf_token) {
-            document.body.dataset.csrf = d.csrf_token;
-        }
+        if (d.csrf_token) document.body.dataset.csrf = d.csrf_token;
         if (!d.ok) console.error('Gruppe-Fehler', d);
     })
     .catch(console.error);
