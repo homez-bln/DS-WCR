@@ -1,22 +1,27 @@
 <?php
 /**
  * WCR Produkte Spotlight Shortcode
+ * v2: + mode-Parameter, DS-Seiten-Aktivierungscheck, wcr-playlist-check Kommentar
  *
  * Verwendung:
  *   [wcr_produkte id1="42" id2="17" id3="99"]
- *   [wcr_produkte id1="42" id2="17" id3="99" titel="Unsere Empfehlungen" table="food"]
+ *   [wcr_produkte id1="42" id2="17" id3="99" titel="Unsere Empfehlungen" table="food" mode="any"]
  *
  * Parameter:
  *   id1, id2, id3  – Datenbank-Nummer (Spalte `nummer`) der Produkte
  *   titel          – Überschrift (Standard: "Unsere Empfehlungen")
  *   table          – Optional: Tabelle eingrenzen (food, drinks, cable, camping, extra, ice)
- *   img1,img2,img3 – Optional: URL zum Produkt-Bild (zeigt Dampf-Effekt darunter)
- *   show_menge     – Optional: "1" zeigt Mengenangaben, sonst ausgeblendet (Standard: "0")
- *
- * Jede Card zeigt: [Bild + Dampf] · Produktname · Preis · [optional: Menge]
+ *   mode           – Optional: "any" (Standard) | "all"
+ *   img1,img2,img3 – Optional: URL zum Produkt-Bild
+ *   show_menge     – Optional: "1" zeigt Mengenangaben (Standard: "0")
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
+
+// Zentrales DS-Seiten-Aktivierungssystem laden
+if ( file_exists( __DIR__ . '/ds-pages.php' ) ) {
+    require_once __DIR__ . '/ds-pages.php';
+}
 
 if ( ! function_exists( 'wcr_sc_produkte' ) ) {
 
@@ -28,13 +33,15 @@ if ( ! function_exists( 'wcr_sc_produkte' ) ) {
             'id3'        => '',
             'titel'      => 'Unsere Empfehlungen',
             'table'      => '',
+            'mode'       => 'any',
             'img1'       => '',
             'img2'       => '',
             'img3'       => '',
-            'show_menge' => '0',  // Standard: ausgeblendet
+            'show_menge' => '0',
         ], $atts, 'wcr_produkte' );
 
         $show_menge = ( $atts['show_menge'] === '1' || $atts['show_menge'] === 'true' );
+        $mode       = in_array( $atts['mode'], [ 'any', 'all' ], true ) ? $atts['mode'] : 'any';
 
         // ── Assets laden ──
         wp_enqueue_style(
@@ -50,6 +57,30 @@ if ( ! function_exists( 'wcr_sc_produkte' ) ) {
             WCR_DS_VERSION,
             true
         );
+
+        // ── Aktuelle Seiten-ID ──
+        $page_id = (int) get_queried_object_id();
+
+        // ── DS-Seiten-Check URL (für späteren REST-Endpoint) ──
+        $check_params = [];
+        if ( ! empty( $atts['table'] ) ) $check_params['table'] = $atts['table'];
+        $raw_ids = array_filter( [ $atts['id1'], $atts['id2'], $atts['id3'] ] );
+        if ( ! empty( $raw_ids ) ) $check_params['ids'] = implode( ',', $raw_ids );
+        if ( $mode !== 'any' ) $check_params['mode'] = $mode;
+        $check_url   = '/wp-json/wcr/v1/playlist-check' . ( ! empty($check_params) ? '?' . http_build_query($check_params) : '' );
+        $check_comment = '<!-- wcr-playlist-check: ' . esc_attr( $check_url ) . ' -->';
+
+        // ── DS-Aktivierungscheck ──
+        if ( function_exists( 'is_ds_page_active' ) && $page_id > 0 ) {
+            $rule_fallback = [
+                'table' => $atts['table'],
+                'ids'   => implode( ',', $raw_ids ),
+                'mode'  => $mode,
+            ];
+            if ( ! is_ds_page_active( $page_id, $rule_fallback ) ) {
+                return $check_comment . "\n" . '<!-- wcr-ds-page-inactive -->';
+            }
+        }
 
         // ── DB-Verbindung ──
         $db = get_ionos_db_connection();
@@ -86,6 +117,7 @@ if ( ! function_exists( 'wcr_sc_produkte' ) ) {
         $titel = esc_html( $atts['titel'] );
 
         ob_start();
+        echo $check_comment . "\n";
         ?>
         <div class="wcr-produkte-wrap">
 
@@ -109,7 +141,6 @@ if ( ! function_exists( 'wcr_sc_produkte' ) ) {
 
                         <?php if ( $img_url ) : ?>
                         <div class="wcr-produkte-img-wrap">
-                            <!-- Dampf-Partikel -->
                             <div class="wcr-steam">
                                 <span></span><span></span><span></span><span></span><span></span>
                             </div>
