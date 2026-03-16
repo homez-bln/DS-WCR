@@ -1,7 +1,7 @@
 <?php
 /**
  * ctrl/ds-sync.php — WP-Seiten automatisch generieren
- * v2.2: Fix — Slug nach Erstellen via PATCH erzwingen (WP ignoriert slug bei POST)
+ * v2.3: Titel aus Slug (DS Burger Highlight) + PRG verhindert Re-Trigger bei Reload
  */
 require_once __DIR__ . '/../inc/auth.php';
 require_once __DIR__ . '/../inc/db.php';
@@ -49,15 +49,30 @@ function wcr_sync_get_typen(PDO $pdo, array $tables): array {
 
 // Slug: ds-{name}-{suffix} — nur a-z, 0-9, Bindestriche
 function wcr_sync_make_slug(string $name, string $suffix): string {
-    // Umlaute ersetzen
-    $map = ['\u00e4'=>'ae','\u00f6'=>'oe','\u00fc'=>'ue','\u00df'=>'ss',
-            '\u00c4'=>'ae','\u00d6'=>'oe','\u00dc'=>'ue',
+    $map = ["\xc3\xa4"=>'ae',"\xc3\xb6"=>'oe',"\xc3\xbc"=>'ue',"\xc3\x9f"=>'ss',
+            "\xc3\x84"=>'ae',"\xc3\x96"=>'oe',"\xc3\x9c"=>'ue',
             '&'=>'und',' '=>'-'];
     $name = mb_strtolower(trim($name), 'UTF-8');
-    foreach ($map as $k => $v) $name = str_replace(json_decode('"'.$k.'"'), $v, $name);
+    foreach ($map as $k => $v) $name = str_replace($k, $v, $name);
     $name = preg_replace('/[^a-z0-9\-]+/', '-', $name);
     $name = trim(preg_replace('/-+/', '-', $name), '-');
     return 'ds-' . $name . '-' . $suffix;
+}
+
+// Titel aus Slug: ds-burger-highlight → DS Burger Highlight
+function wcr_sync_title_from_slug(string $slug): string {
+    // Bindestriche durch Leerzeichen, dann ucwords
+    return implode(' ', array_map('ucfirst', explode('-', $slug)));
+    // Ergebnis: "Ds Burger Highlight" → wir wollen "DS Burger Highlight"
+    // DS immer uppercase:
+}
+function wcr_sync_make_title(string $slug): string {
+    $parts = explode('-', $slug);
+    $parts = array_map(function($p) {
+        // 'ds' → 'DS', rest ucfirst
+        return strtolower($p) === 'ds' ? 'DS' : ucfirst($p);
+    }, $parts);
+    return implode(' ', $parts);
 }
 
 function wcr_http_code(array $headers): int {
@@ -118,22 +133,18 @@ function wcr_sync_elementor_data(string $shortcode): string {
     return json_encode($data, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
 }
 
-/**
- * Seite erstellen + Slug danach via PATCH erzwingen
- * WP ignoriert manchmal den slug beim POST und generiert ihn aus dem Titel.
- * Daher: POST zum Erstellen, dann PATCH /pages/{id} mit korrektem Slug.
- */
+// Seite erstellen — Titel aus Slug, PATCH erzwingt Slug danach
 function wcr_sync_create_page(
     string $api_base, string $auth,
-    string $slug, string $title, string $shortcode,
+    string $slug, string $shortcode,
     int $menu_order = 9999
 ): array {
-    // Titel sauber (keine Sonderzeichen die WP verwirren)
-    $safe_title = $title;
+    // Titel direkt aus Slug generieren: ds-burger-highlight → DS Burger Highlight
+    $title = wcr_sync_make_title($slug);
 
     $body = json_encode([
         'slug'       => $slug,
-        'title'      => $safe_title,
+        'title'      => $title,
         'status'     => 'publish',
         'menu_order' => $menu_order,
         'content'    => '<!-- wp:shortcode -->'.$shortcode.'<!-- /wp:shortcode -->',
@@ -150,7 +161,6 @@ function wcr_sync_create_page(
         'Authorization: Basic '.$auth,
     ])."\r\n";
 
-    // POST — Seite erstellen
     $ctx = stream_context_create(['http'=>[
         'method'=>'POST','timeout'=>12,'ignore_errors'=>true,
         'header'=>$headers,'content'=>$body,
@@ -166,7 +176,7 @@ function wcr_sync_create_page(
     if (!is_array($res) || empty($res['id']) || (int)$res['id'] < 1)
         return ['ok'=>false,'error'=>($res['message']??substr($raw,0,200))];
 
-    $page_id  = (int)$res['id'];
+    $page_id   = (int)$res['id'];
     $real_slug = $res['slug'] ?? '';
 
     // PATCH — Slug erzwingen falls WP ihn umbenannt hat
@@ -180,10 +190,10 @@ function wcr_sync_create_page(
         @file_get_contents($api_base.'/pages/'.$page_id, false, $pctx);
     }
 
-    return ['ok'=>true,'id'=>$page_id,'url'=>$res['link']??'','slug_fixed'=>($real_slug !== $slug)];
+    return ['ok'=>true,'id'=>$page_id,'url'=>$res['link']??'','slug_fixed'=>($real_slug !== $slug),'title'=>$title];
 }
 
-// ── POST-Handling ───────────────────────────────────────────────────────────────────
+// ── POST-Handling ─────────────────────────────────────────────────────────────
 $config_msg = '';
 $auth_test  = null;
 if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['wcr_save_config'])) {
@@ -196,7 +206,11 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['wcr_save_config'])) {
     $config_msg = '✅ Gespeichert.';
 }
 
-$sync_log = [];
+// Sync: PRG-Pattern — nach Sync redirect mit ?done=1 damit Reload nicht re-triggert
+$sync_log    = [];
+$sync_done   = isset($_GET['done']) && $_GET['done'] === '1';
+$sync_result = [];
+
 if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['wcr_run_sync'])) {
     wcr_verify_csrf();
     $wp_user = $cfg['wp_user'] ?? '';
@@ -213,14 +227,14 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['wcr_run_sync'])) {
             $sync_log[] = ['status'=>'skip','slug'=>'AUTH','msg'=>'🔑 '.$auth_check['msg']];
             $to_sync = [];
             foreach (($pages_def['static'] ?? []) as $p)
-                $to_sync[] = ['slug'=>wcr_sync_make_slug($p['name'],$p['suffix']),'title'=>$p['title'],'shortcode'=>$p['shortcode'],'menu_order'=>(int)($p['menu_order']??9999)];
+                $to_sync[] = ['slug'=>wcr_sync_make_slug($p['name'],$p['suffix']),'shortcode'=>$p['shortcode'],'menu_order'=>(int)($p['menu_order']??9999)];
             foreach (($pages_def['tables'] ?? []) as $t)
-                $to_sync[] = ['slug'=>wcr_sync_make_slug($t['name'],$t['suffix']),'title'=>$t['title'],'shortcode'=>$t['shortcode'],'menu_order'=>(int)($t['menu_order']??9999)];
-            $hl_tpl = $pages_def['highlight_shortcode'] ?? '[wcr_produkte table="{table}" titel="{title}"]';
+                $to_sync[] = ['slug'=>wcr_sync_make_slug($t['name'],$t['suffix']),'shortcode'=>$t['shortcode'],'menu_order'=>(int)($t['menu_order']??9999)];
+            $hl_tpl   = $pages_def['highlight_shortcode'] ?? '[wcr_produkte table="{table}" titel="{title}"]';
             $hl_order = 200;
             foreach (wcr_sync_get_typen($pdo, $ALLOWED_TABLES) as $entry) {
                 $sc = str_replace(['{table}','{title}'],[$entry['table'],$entry['typ']],$hl_tpl);
-                $to_sync[] = ['slug'=>wcr_sync_make_slug($entry['typ'],'highlight'),'title'=>$entry['typ'].' Highlight','shortcode'=>$sc,'menu_order'=>$hl_order];
+                $to_sync[] = ['slug'=>wcr_sync_make_slug($entry['typ'],'highlight'),'shortcode'=>$sc,'menu_order'=>$hl_order];
                 $hl_order += 10;
             }
             foreach ($to_sync as $page) {
@@ -233,19 +247,31 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['wcr_run_sync'])) {
                     $sync_log[] = ['status'=>'skip','slug'=>$page['slug'],'msg'=>'⏭ ID '.$check['id'].' ('.$check['status'].')'];
                     continue;
                 }
-                $res = wcr_sync_create_page($WP_API_BASE,$auth,$page['slug'],$page['title'],$page['shortcode'],$page['menu_order']);
+                $res = wcr_sync_create_page($WP_API_BASE, $auth, $page['slug'], $page['shortcode'], $page['menu_order']);
                 if ($res['ok']) {
                     $extra = !empty($res['slug_fixed']) ? ' (Slug korrigiert)' : '';
-                    $sync_log[] = ['status'=>'created','slug'=>$page['slug'],'msg'=>'✅ Erstellt — ID '.$res['id'].$extra,'url'=>$res['url']??''];
+                    $sync_log[] = ['status'=>'created','slug'=>$page['slug'],'msg'=>'✅ '.$res['title'].' — ID '.$res['id'].$extra,'url'=>$res['url']??''];
                 } else {
                     $sync_log[] = ['status'=>'error','slug'=>$page['slug'],'msg'=>'❌ '.$res['error']];
                 }
             }
         }
     }
+    // PRG: Session speichern, dann redirect
+    session_start();
+    $_SESSION['wcr_sync_log'] = $sync_log;
+    header('Location: '.strtok($_SERVER['REQUEST_URI'],'?').'?done=1');
+    exit;
 }
 
-// ── Vorschau ───────────────────────────────────────────────────────────────────
+// Nach Redirect: Log aus Session laden
+if ($sync_done) {
+    if (session_status() === PHP_SESSION_NONE) session_start();
+    $sync_log = $_SESSION['wcr_sync_log'] ?? [];
+    unset($_SESSION['wcr_sync_log']);
+}
+
+// ── Vorschau ─────────────────────────────────────────────────────────────────
 $preview = [];
 foreach (($pages_def['static'] ?? []) as $p)
     $preview[] = ['slug'=>wcr_sync_make_slug($p['name'],$p['suffix']),'sc'=>$p['shortcode'],'group'=>'Statisch'];
@@ -305,6 +331,7 @@ $has_auth = !empty($cfg['wp_user']) && !empty($cfg['wp_app_pass']);
 <div class="header-controls" style="margin-bottom:20px;">
   <h1>🔄 <?= htmlspecialchars($PAGE_TITLE,ENT_QUOTES,'UTF-8') ?></h1>
 </div>
+
 <div class="sync-card">
   <h2>🔑 WP Application Password</h2>
   <?php if ($config_msg): ?><div class="notice ok"><?= htmlspecialchars($config_msg,ENT_QUOTES,'UTF-8') ?></div><?php endif; ?>
@@ -320,9 +347,10 @@ $has_auth = !empty($cfg['wp_user']) && !empty($cfg['wp_app_pass']);
     </div>
   </form>
 </div>
+
 <div class="sync-card">
   <h2>🚀 Sync ausführen</h2>
-  <p style="font-size:.82rem;color:#6b7280;margin:0 0 12px;">Prüft jeden Slug — <strong>keine Duplikate</strong>. Slug wird nach dem Erstellen via PATCH erzwungen.</p>
+  <p style="font-size:.82rem;color:#6b7280;margin:0 0 12px;">Titel = Slug lesbar (DS Burger Highlight). Kein Re-Trigger bei Reload.</p>
   <?php if (!empty($sync_log)):
     $n_c=count(array_filter($sync_log,fn($l)=>$l['status']==='created'));
     $n_s=count(array_filter($sync_log,fn($l)=>$l['status']==='skip'));
@@ -333,7 +361,7 @@ $has_auth = !empty($cfg['wp_user']) && !empty($cfg['wp_app_pass']);
     <?php if($n_e): ?><div class="sum-chip e">❌ <?= $n_e ?> Fehler</div><?php endif; ?>
   </div>
   <?php foreach($sync_log as $l): ?>
-  <div class="log-item <?= $l['status'] ?>">
+  <div class="log-item <?= htmlspecialchars($l['status'],ENT_QUOTES,'UTF-8') ?>">
     <span class="log-slug"><?= htmlspecialchars($l['slug'],ENT_QUOTES,'UTF-8') ?></span>
     <span class="log-msg"><?= htmlspecialchars($l['msg'],ENT_QUOTES,'UTF-8') ?>
       <?php if(!empty($l['url'])): ?><a href="<?= htmlspecialchars($l['url'],ENT_QUOTES,'UTF-8') ?>" target="_blank" style="color:#0071e3;">↗</a><?php endif; ?>
@@ -348,15 +376,19 @@ $has_auth = !empty($cfg['wp_user']) && !empty($cfg['wp_app_pass']);
     <button type="submit" class="btn-sync" <?= !$has_auth?'disabled':'' ?>>🔄 Sync starten — <?= count($preview) ?> Seiten prüfen</button>
   </form>
 </div>
+
 <div class="sync-card">
   <h2>📋 Geplante Seiten <small style="font-weight:400;color:#9ca3af;">(<?= count($preview) ?> total)</small></h2>
   <table class="preview-table">
-    <thead><tr><th>Slug</th><th>Typ</th><th>Shortcode</th></tr></thead>
+    <thead><tr><th>Slug</th><th>Titel (WP)</th><th>Typ</th><th>Shortcode</th></tr></thead>
     <tbody>
     <?php foreach($preview as $p):
-      $bc=str_contains($p['group'],'Statisch')?'static':(str_contains($p['group'],'Liste')?'list':'highlight'); ?>
+      $bc=str_contains($p['group'],'Statisch')?'static':(str_contains($p['group'],'Liste')?'list':'highlight');
+      $ptitle = wcr_sync_make_title($p['slug']);
+    ?>
     <tr>
       <td><code style="font-size:.74rem;"><?= htmlspecialchars($p['slug'],ENT_QUOTES,'UTF-8') ?></code></td>
+      <td style="font-size:.78rem;font-weight:600;color:#111;"><?= htmlspecialchars($ptitle,ENT_QUOTES,'UTF-8') ?></td>
       <td><span class="badge <?= $bc ?>"><?= htmlspecialchars($p['group'],ENT_QUOTES,'UTF-8') ?></span></td>
       <td><code style="font-size:.71rem;color:#6b7280;"><?= htmlspecialchars($p['sc'],ENT_QUOTES,'UTF-8') ?></code></td>
     </tr>
