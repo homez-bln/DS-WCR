@@ -34,7 +34,6 @@ function wcr_ds_check_status(array $rule, PDO $pdo, array $allowed_tables): arra
     $ids_raw = trim($rule['ids'] ?? '');
     $mode    = ($rule['mode'] ?? 'any') === 'all' ? 'all' : 'any';
 
-    // Keine Regel → immer aktiv
     if (empty($tables) && $typ === '' && $ids_raw === '') {
         return ['active' => true, 'reason' => 'no_rule', 'db_ok' => true];
     }
@@ -42,7 +41,6 @@ function wcr_ds_check_status(array $rule, PDO $pdo, array $allowed_tables): arra
     $check_tables = !empty($tables) ? $tables : $allowed_tables;
 
     try {
-        // ── IDs-Modus ──
         if ($ids_raw !== '') {
             $ids = array_filter(array_map('intval', explode(',', $ids_raw)));
             if (empty($ids)) return ['active' => true, 'reason' => 'ids_empty', 'db_ok' => true];
@@ -60,7 +58,6 @@ function wcr_ds_check_status(array $rule, PDO $pdo, array $allowed_tables): arra
             return ['active' => $active, 'reason' => 'ids_'.$mode.':'.$found.'/'.$total, 'db_ok' => true];
         }
 
-        // ── Typ-Modus ──
         if ($typ !== '') {
             foreach ($check_tables as $tbl) {
                 $stmt = $pdo->prepare("SELECT COUNT(*) FROM `{$tbl}` WHERE typ = ? AND stock > 0");
@@ -72,7 +69,6 @@ function wcr_ds_check_status(array $rule, PDO $pdo, array $allowed_tables): arra
             return ['active' => false, 'reason' => 'typ_none_active:'.$typ, 'db_ok' => true];
         }
 
-        // ── Nur Tabellen-Modus ──
         foreach ($check_tables as $tbl) {
             $stmt = $pdo->query("SELECT COUNT(*) FROM `{$tbl}` WHERE stock > 0");
             if ((int)$stmt->fetchColumn() > 0) {
@@ -89,8 +85,8 @@ function wcr_ds_check_status(array $rule, PDO $pdo, array $allowed_tables): arra
 // ── POST: Regel speichern ──
 $save_msg = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['wcr_ds_save'])) {
-    wcr_require('view_ds'); // nochmal explizit
-    wcr_verify_csrf();      // 403 + exit bei Fehler
+    wcr_require('view_ds');
+    wcr_verify_csrf();
 
     $slug = preg_replace('/[^a-z0-9_\-]/', '', strtolower($_POST['page_slug'] ?? ''));
     if ($slug !== '') {
@@ -102,55 +98,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['wcr_ds_save'])) {
             'mode'     => in_array($_POST['mode'] ?? 'any', ['any','all']) ? $_POST['mode'] : 'any',
         ];
         wcr_ds_save_rules($RULES_FILE, $rules);
-        $save_msg = '\u2705 Gespeichert f\u00fcr Seite: ' . htmlspecialchars($slug);
+        $save_msg = '✅ Gespeichert für Seite: ' . htmlspecialchars($slug, ENT_QUOTES, 'UTF-8');
     }
 }
 
-// ── Seiten-Konfiguration (statisch + dynamisch aus Regeln) ──
+// ── Seiten-Konfiguration ──
 $gruppen = [
     [
-        'label'   => '\ud83d\uddbc\ufe0f 16:9 \u2014 Landscape',
+        'label'    => '🖼️ 16:9 — Landscape',
         'portrait' => false,
-        'seiten'  => [
-            ['title' => 'Starter Pack',         'slug' => 'starter-pack',          'url' => 'https://wcr-webpage.de/starter-pack',          'icon' => '\ud83c\udfc4'],
-            ['title' => 'Wetter',               'slug' => 'wetter',                'url' => 'https://wcr-webpage.de/wetter',                'icon' => '\ud83c\udf24'],
-            ['title' => 'Wind Map',             'slug' => 'windmap',               'url' => 'https://wcr-webpage.de/windmap',               'icon' => '\ud83d\udca8'],
-            ['title' => 'Tickets / Cable',      'slug' => 'tickets',               'url' => 'https://wcr-webpage.de/tickets',               'icon' => '\ud83c\udfc4'],
-            ['title' => 'Kaffee',               'slug' => 'kaffee',                'url' => 'https://wcr-webpage.de/kaffee',                'icon' => '\u2615'],
-            ['title' => 'Merchandise',          'slug' => 'merchandise',           'url' => 'https://wcr-webpage.de/merchandise',           'icon' => '\ud83d\udc55'],
-            ['title' => 'Stand Up Paddle',      'slug' => 'sup',                   'url' => 'https://wcr-webpage.de/sup',                   'icon' => '\ud83c\udfc4'],
-            ['title' => 'Park',                 'slug' => 'park',                  'url' => 'https://wcr-webpage.de/park',                  'icon' => '\ud83c\udf0a'],
-            ['title' => 'Obstacles',            'slug' => 'obstacles',             'url' => 'https://wake-and-camp.de/obst/',               'icon' => '\ud83e\udd38'],
-            ['title' => 'Kino',                 'slug' => 'kino',                  'url' => 'https://wcr-webpage.de/kino',                  'icon' => '\ud83c\udfa6'],
+        'seiten'   => [
+            ['title' => 'Starter Pack',    'slug' => 'starter-pack',    'url' => 'https://wcr-webpage.de/starter-pack',    'icon' => '🏄'],
+            ['title' => 'Wetter',          'slug' => 'wetter',          'url' => 'https://wcr-webpage.de/wetter',          'icon' => '🌤'],
+            ['title' => 'Wind Map',        'slug' => 'windmap',         'url' => 'https://wcr-webpage.de/windmap',         'icon' => '💨'],
+            ['title' => 'Tickets / Cable', 'slug' => 'tickets',         'url' => 'https://wcr-webpage.de/tickets',         'icon' => '🏄'],
+            ['title' => 'Kaffee',          'slug' => 'kaffee',          'url' => 'https://wcr-webpage.de/kaffee',          'icon' => '☕'],
+            ['title' => 'Merchandise',     'slug' => 'merchandise',     'url' => 'https://wcr-webpage.de/merchandise',     'icon' => '👕'],
+            ['title' => 'Stand Up Paddle', 'slug' => 'sup',             'url' => 'https://wcr-webpage.de/sup',             'icon' => '🏄'],
+            ['title' => 'Park',            'slug' => 'park',            'url' => 'https://wcr-webpage.de/park',            'icon' => '🌊'],
+            ['title' => 'Obstacles',       'slug' => 'obstacles',       'url' => 'https://wake-and-camp.de/obst/',         'icon' => '🤸'],
+            ['title' => 'Kino',            'slug' => 'kino',            'url' => 'https://wcr-webpage.de/kino',            'icon' => '🎦'],
         ],
     ],
     [
-        'label'   => '\ud83d\udcf1 Listen',
+        'label'    => '📱 Listen',
         'portrait' => false,
-        'seiten'  => [
-            ['title' => 'Cable Preisliste',     'slug' => 'cable-list',            'url' => 'https://wcr-webpage.de/cable-list',            'icon' => '\ud83c\udfab'],
-            ['title' => 'Camping Preise',       'slug' => 'camping-list',          'url' => 'https://wcr-webpage.de/camping-list',          'icon' => '\u26fa'],
-            ['title' => 'Eiskarte',             'slug' => 'eis',                   'url' => 'https://wcr-webpage.de/eis',                   'icon' => '\ud83c\udf66'],
-            ['title' => 'Getr\u00e4nke',        'slug' => 'getraenke',             'url' => 'https://wcr-webpage.de/getraenke',             'icon' => '\ud83c\udf7a'],
-            ['title' => 'Softdrinks',           'slug' => 'soft',                  'url' => 'https://wcr-webpage.de/soft',                  'icon' => '\ud83e\udd64'],
-            ['title' => 'Speisekarte',          'slug' => 'essen',                 'url' => 'https://wcr-webpage.de/essen',                 'icon' => '\ud83c\udf54'],
+        'seiten'   => [
+            ['title' => 'Cable Preisliste', 'slug' => 'cable-list',   'url' => 'https://wcr-webpage.de/cable-list',   'icon' => '🎫'],
+            ['title' => 'Camping Preise',   'slug' => 'camping-list', 'url' => 'https://wcr-webpage.de/camping-list', 'icon' => '⛺'],
+            ['title' => 'Eiskarte',         'slug' => 'eis',          'url' => 'https://wcr-webpage.de/eis',          'icon' => '🍦'],
+            ['title' => 'Getränke',         'slug' => 'getraenke',    'url' => 'https://wcr-webpage.de/getraenke',    'icon' => '🍺'],
+            ['title' => 'Softdrinks',       'slug' => 'soft',         'url' => 'https://wcr-webpage.de/soft',         'icon' => '🥤'],
+            ['title' => 'Speisekarte',      'slug' => 'essen',        'url' => 'https://wcr-webpage.de/essen',        'icon' => '🍔'],
         ],
     ],
     [
-        'label'   => '\ud83d\udcf1 Produkt-Spotlight',
+        'label'    => '📱 Produkt-Spotlight',
         'portrait' => false,
-        'seiten'  => [
-            ['title' => 'Burger Table',         'slug' => 'produkt-table',         'url' => 'https://wcr-webpage.de/produkt-table',         'icon' => '\ud83c\udf54'],
+        'seiten'   => [
+            ['title' => 'Burger Table', 'slug' => 'produkt-table', 'url' => 'https://wcr-webpage.de/produkt-table', 'icon' => '🍔'],
         ],
     ],
     [
-        'label'   => '\ud83d\udcf1 9:16 \u2014 Portrait',
+        'label'    => '📱 9:16 — Portrait',
         'portrait' => true,
-        'seiten'  => [
-            ['title' => '\u00d6ffnungszeiten Story', 'slug' => 'oeffnungszeiten-story', 'url' => 'https://wcr-webpage.de/oeffnungszeiten-story', 'icon' => '\ud83d\udd50'],
-            ['title' => 'Instagram Grid',        'slug' => 'insta',                 'url' => 'https://wcr-webpage.de/insta',                 'icon' => '\ud83d\udcf8'],
-            ['title' => 'Instagram Reels',       'slug' => 'insta-reel',            'url' => 'https://wcr-webpage.de/insta-reel',            'icon' => '\ud83c\udfa5'],
-            ['title' => 'Cable-Park Portrait',   'slug' => 'park-portrait',         'url' => 'https://wcr-webpage.de/park-portrait',         'icon' => '\ud83c\udf0a'],
+        'seiten'   => [
+            ['title' => 'Öffnungszeiten Story', 'slug' => 'oeffnungszeiten-story', 'url' => 'https://wcr-webpage.de/oeffnungszeiten-story', 'icon' => '🕐'],
+            ['title' => 'Instagram Grid',       'slug' => 'insta',                 'url' => 'https://wcr-webpage.de/insta',                 'icon' => '📸'],
+            ['title' => 'Instagram Reels',      'slug' => 'insta-reel',            'url' => 'https://wcr-webpage.de/insta-reel',            'icon' => '🎥'],
+            ['title' => 'Cable-Park Portrait',  'slug' => 'park-portrait',         'url' => 'https://wcr-webpage.de/park-portrait',         'icon' => '🌊'],
         ],
     ],
 ];
@@ -161,7 +157,6 @@ foreach ($gruppen as &$g) {
     foreach ($g['seiten'] as &$s) {
         $s['_idx']     = count($alle_seiten);
         $s['portrait'] = $g['portrait'];
-        // Regel + Live-Status anhängen
         $slug = $s['slug'] ?? '';
         $rule = $rules[$slug] ?? ['override'=>'auto','tables'=>[],'typ'=>'','ids'=>'','mode'=>'any'];
         $s['rule']   = $rule;
@@ -171,7 +166,7 @@ foreach ($gruppen as &$g) {
 }
 unset($g, $s);
 
-// Typ-Vorschläge für Datalist (alle eindeutigen Typen aus DB)
+// Typ-Vorschläge für Datalist
 $typen_all = [];
 foreach ($ALLOWED_TABLES as $tbl) {
     try {
@@ -181,12 +176,13 @@ foreach ($ALLOWED_TABLES as $tbl) {
 }
 $typen_all = array_unique($typen_all);
 sort($typen_all);
+$ds_count = count($alle_seiten);
 ?>
 <!DOCTYPE html>
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <title>Verwaltung: <?= htmlspecialchars($PAGE_TITLE) ?></title>
+  <title>Verwaltung: <?= htmlspecialchars($PAGE_TITLE, ENT_QUOTES, 'UTF-8') ?></title>
   <style>
     .ds-group { margin-bottom: 40px; }
     .ds-group-label { font-size:.8rem;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:#6b7280;padding:0 0 10px;border-bottom:2px solid #e5e7eb;margin-bottom:16px;display:flex;align-items:center;gap:8px; }
@@ -218,7 +214,6 @@ sort($typen_all);
     .ds-card-footer { display:flex;align-items:center;justify-content:space-between;padding:6px 14px;border-top:1px solid #e5e7eb;background:#f9fafb; }
     .ds-url  { font-size:.62rem;color:#9ca3af;font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:65%; }
     .ds-time { font-size:.62rem;color:#9ca3af;white-space:nowrap; }
-    /* Regel-Panel */
     .rule-panel { padding:12px 14px;border-top:2px dashed #e5e7eb;background:#fafafa;display:none; }
     .rule-panel.open { display:block; }
     .rule-panel form { display:flex;flex-direction:column;gap:8px; }
@@ -240,12 +235,12 @@ sort($typen_all);
 <?php include __DIR__ . '/../inc/menu.php'; ?>
 
 <div class="header-controls">
-  <h1>\ud83d\udda5 <?= htmlspecialchars($PAGE_TITLE) ?></h1>
-  <button class="btn-upload" onclick="dsReloadAll()">&#x21BA; Alle neu laden</button>
+  <h1>🖥 <?= htmlspecialchars($PAGE_TITLE, ENT_QUOTES, 'UTF-8') ?></h1>
+  <button class="btn-upload" onclick="dsReloadAll()">↺ Alle neu laden</button>
 </div>
 
 <?php if ($save_msg): ?>
-<div class="save-notice"><?= $save_msg ?></div>
+<div class="save-notice"><?= htmlspecialchars($save_msg, ENT_QUOTES, 'UTF-8') ?></div>
 <?php endif; ?>
 
 <?php foreach ($gruppen as $g):
@@ -256,7 +251,7 @@ sort($typen_all);
 ?>
 <div class="ds-group">
   <div class="ds-group-label">
-    <?= htmlspecialchars($g['label']) ?>
+    <?= htmlspecialchars($g['label'], ENT_QUOTES, 'UTF-8') ?>
     <span class="cnt"><?= count($g['seiten']) ?></span>
   </div>
   <div class="<?= $gridClass ?>">
@@ -265,36 +260,35 @@ sort($typen_all);
       $status = $s['status'];
       $rule   = $s['rule'];
       $ov     = $rule['override'] ?? 'auto';
-      $effektiv = ($ov === 'force_on') ? true : (($ov === 'force_off') ? false : $status['active']);
+      $effektiv   = ($ov === 'force_on') ? true : (($ov === 'force_off') ? false : $status['active']);
       $badgeColor = $effektiv ? '#00c853' : '#ff3b30';
       $badgeText  = $effektiv ? 'Aktiv' : 'Inaktiv';
     ?>
     <div class="ds-card <?= !$effektiv ? 'ds-inactive' : '' ?>" id="ds-card-<?= $i ?>">
       <div class="ds-card-header">
         <div class="ds-card-title">
-          <span><?= htmlspecialchars($s['icon']) ?></span>
-          <span><?= htmlspecialchars($s['title']) ?></span>
+          <span><?= htmlspecialchars($s['icon'], ENT_QUOTES, 'UTF-8') ?></span>
+          <span><?= htmlspecialchars($s['title'], ENT_QUOTES, 'UTF-8') ?></span>
         </div>
         <div class="ds-card-actions">
           <span class="ds-badge" style="background:<?= $badgeColor ?>22;color:<?= $badgeColor ?>;border-color:<?= $badgeColor ?>55;">
             <span class="ds-dot" style="background:<?= $badgeColor ?>"></span>
-            <?= htmlspecialchars($badgeText) ?>
+            <?= htmlspecialchars($badgeText, ENT_QUOTES, 'UTF-8') ?>
           </span>
           <?php if (!$status['db_ok']): ?>
           <span title="DB-Fehler" style="font-size:.8rem;">⚠️</span>
           <?php endif; ?>
-          <button class="ds-btn edit-btn" onclick="toggleRule(<?= $i ?>)">&#9998; Regel</button>
-          <button class="ds-btn" onclick="dsReload(<?= $i ?>)">&#x21BA;</button>
-          <a class="ds-btn primary" href="<?= htmlspecialchars($s['url']) ?>" target="_blank">↗ Öffnen</a>
+          <button class="ds-btn edit-btn" onclick="toggleRule(<?= $i ?>)">✎ Regel</button>
+          <button class="ds-btn" onclick="dsReload(<?= $i ?>)">↺</button>
+          <a class="ds-btn primary" href="<?= htmlspecialchars($s['url'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener">↗ Öffnen</a>
         </div>
       </div>
 
-      <!-- Regel-Panel -->
       <div class="rule-panel" id="rule-panel-<?= $i ?>">
         <form method="post">
           <?= wcr_csrf_field() ?>
           <input type="hidden" name="wcr_ds_save" value="1">
-          <input type="hidden" name="page_slug" value="<?= htmlspecialchars($s['slug']) ?>">
+          <input type="hidden" name="page_slug" value="<?= htmlspecialchars($s['slug'], ENT_QUOTES, 'UTF-8') ?>">
 
           <div class="rule-row">
             <label>Override</label>
@@ -310,9 +304,9 @@ sort($typen_all);
             <div class="rule-cb-group">
               <?php foreach ($ALLOWED_TABLES as $tbl): ?>
               <label>
-                <input type="checkbox" name="tables[]" value="<?= $tbl ?>"
-                  <?= in_array($tbl,(array)($rule['tables']??[]),true)?'checked':'' ?>>
-                <?= $tbl ?>
+                <input type="checkbox" name="tables[]" value="<?= htmlspecialchars($tbl, ENT_QUOTES, 'UTF-8') ?>"
+                  <?= in_array($tbl,(array)($rule['tables']??[]),true) ? 'checked' : '' ?>>
+                <?= htmlspecialchars($tbl, ENT_QUOTES, 'UTF-8') ?>
               </label>
               <?php endforeach; ?>
             </div>
@@ -320,32 +314,34 @@ sort($typen_all);
 
           <div class="rule-row">
             <label>Typ</label>
-            <input type="text" name="typ" value="<?= htmlspecialchars($rule['typ']??'') ?>"
+            <input type="text" name="typ"
+                   value="<?= htmlspecialchars($rule['typ']??'', ENT_QUOTES, 'UTF-8') ?>"
                    list="typen-list" placeholder="z.B. Burger, Softdrink …">
             <datalist id="typen-list">
-              <?php foreach($typen_all as $tv): ?>
-              <option value="<?= htmlspecialchars($tv) ?>">
+              <?php foreach ($typen_all as $tv): ?>
+              <option value="<?= htmlspecialchars($tv, ENT_QUOTES, 'UTF-8') ?>"></option>
               <?php endforeach; ?>
             </datalist>
           </div>
 
           <div class="rule-row">
             <label>IDs</label>
-            <input type="text" name="ids" value="<?= htmlspecialchars($rule['ids']??'') ?>"
+            <input type="text" name="ids"
+                   value="<?= htmlspecialchars($rule['ids']??'', ENT_QUOTES, 'UTF-8') ?>"
                    placeholder="3010,3089,3162">
           </div>
 
           <div class="rule-row">
             <label>Mode</label>
             <select name="mode">
-              <option value="any" <?= (($rule['mode']??'any')==='any')?'selected':'' ?>>any – mind. 1 aktiv</option>
-              <option value="all" <?= (($rule['mode']??'any')==='all')?'selected':'' ?>>all – alle müssen aktiv sein</option>
+              <option value="any" <?= (($rule['mode']??'any')==='any') ? 'selected':'' ?>>any – mind. 1 aktiv</option>
+              <option value="all" <?= (($rule['mode']??'any')==='all') ? 'selected':'' ?>>all – alle müssen aktiv sein</option>
             </select>
           </div>
 
           <div class="rule-row">
-            <span class="rule-status <?= !$status['db_ok']?'dberr':($status['active']?'active':'inactive') ?>">
-              <?= $status['active']?'✅':'⛔' ?> <?= htmlspecialchars($status['reason']) ?>
+            <span class="rule-status <?= !$status['db_ok'] ? 'dberr' : ($status['active'] ? 'active' : 'inactive') ?>">
+              <?= $status['active'] ? '✅' : '⛔' ?> <?= htmlspecialchars($status['reason'], ENT_QUOTES, 'UTF-8') ?>
             </span>
           </div>
 
@@ -359,14 +355,14 @@ sort($typen_all);
           <span>Lädt…</span>
         </div>
         <iframe id="ds-frame-<?= $i ?>"
-          data-src="<?= htmlspecialchars($s['url']) ?>"
+          data-src="<?= htmlspecialchars($s['url'], ENT_QUOTES, 'UTF-8') ?>"
           data-nw="<?= $nW ?>" data-nh="<?= $nH ?>"
           style="width:<?= $nW ?>px;height:<?= $nH ?>px;"
           scrolling="no"></iframe>
       </div>
 
       <div class="ds-card-footer">
-        <span class="ds-url"><?= htmlspecialchars($s['url']) ?></span>
+        <span class="ds-url"><?= htmlspecialchars($s['url'], ENT_QUOTES, 'UTF-8') ?></span>
         <span class="ds-time" id="ds-time-<?= $i ?>">-</span>
       </div>
     </div>
@@ -376,47 +372,74 @@ sort($typen_all);
 <?php endforeach; ?>
 
 <script>
+var DS_COUNT = <?= json_encode($ds_count) ?>;
 var dsStartTimes = {};
-function dsScaleWrap(wrap){
-  var iframe=wrap.querySelector('iframe');if(!iframe)return;
-  var nW=parseInt(iframe.dataset.nw,10)||1920,nH=parseInt(iframe.dataset.nh,10)||1080;
-  var scale=wrap.offsetWidth/nW;
-  iframe.style.transform='scale('+scale+')';
-  wrap.style.height=Math.round(nH*scale)+'px';
+
+function dsScaleWrap(wrap) {
+  var iframe = wrap.querySelector('iframe');
+  if (!iframe) return;
+  var nW = parseInt(iframe.dataset.nw, 10) || 1920;
+  var nH = parseInt(iframe.dataset.nh, 10) || 1080;
+  var scale = wrap.offsetWidth / nW;
+  iframe.style.transform = 'scale(' + scale + ')';
+  wrap.style.height = Math.round(nH * scale) + 'px';
 }
-var ro=new ResizeObserver(function(e){e.forEach(function(e){dsScaleWrap(e.target);});});
-function dsLoaded(idx){
-  var f=document.getElementById('ds-frame-'+idx),sp=document.getElementById('ds-spin-'+idx),ti=document.getElementById('ds-time-'+idx);
-  if(!f||!sp)return;
-  f.classList.add('loaded');sp.classList.add('hidden');
-  if(ti&&dsStartTimes[idx]){var ms=Date.now()-dsStartTimes[idx];ti.textContent='✓ '+(ms/1000).toFixed(1)+'s';ti.style.color=ms<2000?'#16a34a':ms<5000?'#d97706':'#dc2626';}
-  var w=document.getElementById('ds-wrap-'+idx);if(w)dsScaleWrap(w);
+
+var ro = new ResizeObserver(function(entries) {
+  entries.forEach(function(entry) { dsScaleWrap(entry.target); });
+});
+
+function dsLoaded(idx) {
+  var f  = document.getElementById('ds-frame-' + idx);
+  var sp = document.getElementById('ds-spin-'  + idx);
+  var ti = document.getElementById('ds-time-'  + idx);
+  if (!f || !sp) return;
+  f.classList.add('loaded');
+  sp.classList.add('hidden');
+  if (ti && dsStartTimes[idx]) {
+    var ms = Date.now() - dsStartTimes[idx];
+    ti.textContent = '✓ ' + (ms / 1000).toFixed(1) + 's';
+    ti.style.color = ms < 2000 ? '#16a34a' : (ms < 5000 ? '#d97706' : '#dc2626');
+  }
+  var w = document.getElementById('ds-wrap-' + idx);
+  if (w) dsScaleWrap(w);
 }
-function dsReload(idx){
-  var f=document.getElementById('ds-frame-'+idx),sp=document.getElementById('ds-spin-'+idx),ti=document.getElementById('ds-time-'+idx);
-  if(!f)return;
+
+function dsReload(idx) {
+  var f  = document.getElementById('ds-frame-' + idx);
+  var sp = document.getElementById('ds-spin-'  + idx);
+  var ti = document.getElementById('ds-time-'  + idx);
+  if (!f) return;
   f.classList.remove('loaded');
-  if(sp){sp.classList.remove('hidden');sp.innerHTML='<div class="ds-spinner"></div><span>Lädt…</span>';}
-  if(ti){ti.textContent='-';ti.style.color='';}
-  dsStartTimes[idx]=Date.now();
-  f.onload=function(){dsLoaded(idx);};
-  f.src=f.dataset.src+'?t='+Date.now();
+  if (sp) { sp.classList.remove('hidden'); sp.innerHTML = '<div class="ds-spinner"></div><span>Lädt…</span>'; }
+  if (ti) { ti.textContent = '-'; ti.style.color = ''; }
+  dsStartTimes[idx] = Date.now();
+  f.onload = function() { dsLoaded(idx); };
+  f.src = f.dataset.src + '?t=' + Date.now();
 }
-function dsReloadAll(){for(var i=0;i<<?= count($alle_seiten) ?>;i++)dsReload(i);}
-function toggleRule(idx){
-  var p=document.getElementById('rule-panel-'+idx);
-  if(p)p.classList.toggle('open');
+
+function dsReloadAll() {
+  for (var i = 0; i < DS_COUNT; i++) dsReload(i);
 }
-document.addEventListener('DOMContentLoaded',function(){
-  document.querySelectorAll('.ds-frame-wrap').forEach(function(w){ro.observe(w);dsScaleWrap(w);});
-  setTimeout(function(){
-    document.querySelectorAll('.ds-frame-wrap iframe').forEach(function(f){
-      var idx=parseInt(f.id.replace('ds-frame-',''),10);
-      dsStartTimes[idx]=Date.now();
-      f.onload=function(){dsLoaded(idx);};
-      f.src=f.dataset.src;
+
+function toggleRule(idx) {
+  var p = document.getElementById('rule-panel-' + idx);
+  if (p) p.classList.toggle('open');
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.ds-frame-wrap').forEach(function(w) {
+    ro.observe(w);
+    dsScaleWrap(w);
+  });
+  setTimeout(function() {
+    document.querySelectorAll('.ds-frame-wrap iframe').forEach(function(f) {
+      var idx = parseInt(f.id.replace('ds-frame-', ''), 10);
+      dsStartTimes[idx] = Date.now();
+      f.onload = function() { dsLoaded(idx); };
+      f.src = f.dataset.src;
     });
-  },200);
+  }, 200);
 });
 </script>
 
