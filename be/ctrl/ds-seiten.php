@@ -1,7 +1,7 @@
 <?php
 /**
  * ctrl/ds-seiten.php — DS-Seiten Vorschau + Aktivierungssteuerung
- * v3: Dynamisch aus WP wp_posts (Prefix ds-) + Custom Fields ds_gruppe / ds_icon / ds_portrait
+ * v3.1: Debug-Ausgabe wenn WP-Query fehlschlägt
  */
 require_once __DIR__ . '/../inc/auth.php';
 require_once __DIR__ . '/../inc/db.php';
@@ -13,10 +13,7 @@ $WP_PREFIX    = 'wp_';          // WP Tabellen-Prefix
 $DS_SLUG_PRE  = 'ds-';         // Slug-Prefix für DS-Seiten
 $SITE_URL     = 'https://wcr-webpage.de'; // Basis-URL
 
-// ── Whitelist für DB-Checks ──
 $ALLOWED_TABLES = ['food','drinks','cable','camping','extra','ice'];
-
-// ── Regeln laden ──
 $RULES_FILE = __DIR__ . '/../inc/ds-rules.json';
 
 function wcr_ds_load_rules(string $file): array {
@@ -31,13 +28,34 @@ function wcr_ds_save_rules(string $file, array $rules): void {
 $rules = wcr_ds_load_rules($RULES_FILE);
 
 // ── WP-Seiten mit Prefix ds- laden ──
-function wcr_ds_load_wp_pages(PDO $pdo, string $prefix, string $slug_pre, string $site_url): array
+function wcr_ds_load_wp_pages(PDO $pdo, string $prefix, string $slug_pre, string $site_url, array &$debug): array
 {
     $tbl  = $prefix . 'posts';
     $tmbl = $prefix . 'postmeta';
 
     try {
-        // Alle publizierten Seiten mit Slug-Prefix
+        // Tabelle vorhanden?
+        $check = $pdo->query("SHOW TABLES LIKE '{$tbl}'")->fetchColumn();
+        if (!$check) {
+            $debug['error'] = "Tabelle '{$tbl}' nicht gefunden!";
+            // Zeige alle Tabellen zur Diagnose
+            $tables = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
+            $debug['all_tables'] = $tables;
+            return [];
+        }
+        $debug['table_exists'] = true;
+
+        // Zeige ALLE publizierten pages (ohne Prefix-Filter) zur Diagnose
+        $all_stmt = $pdo->query(
+            "SELECT p.post_name, p.post_title
+             FROM `{$tbl}` p
+             WHERE p.post_type = 'page' AND p.post_status = 'publish'
+             ORDER BY p.post_name ASC
+             LIMIT 20"
+        );
+        $debug['all_pages'] = $all_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Jetzt mit Prefix-Filter
         $stmt = $pdo->prepare(
             "SELECT p.ID, p.post_title, p.post_name, p.menu_order
              FROM `{$tbl}` p
@@ -49,9 +67,10 @@ function wcr_ds_load_wp_pages(PDO $pdo, string $prefix, string $slug_pre, string
         $stmt->execute([$slug_pre . '%']);
         $pages = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+        $debug['ds_pages_found'] = count($pages);
+
         if (empty($pages)) return [];
 
-        // Custom Fields per Seite laden (ds_gruppe, ds_icon, ds_portrait)
         $ids       = array_column($pages, 'ID');
         $in_clause = implode(',', array_fill(0, count($ids), '?'));
 
@@ -64,28 +83,26 @@ function wcr_ds_load_wp_pages(PDO $pdo, string $prefix, string $slug_pre, string
         $mstmt->execute($ids);
         $meta_rows = $mstmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Meta nach post_id indexieren
         $meta = [];
         foreach ($meta_rows as $row) {
             $meta[$row['post_id']][$row['meta_key']] = $row['meta_value'];
         }
 
-        // Seiten aufbereiten
         $result = [];
         foreach ($pages as $p) {
             $id       = $p['ID'];
             $m        = $meta[$id] ?? [];
-            $slug     = $p['post_name'];                        // z.B. ds-wetter
-            $short    = substr($slug, strlen($slug_pre));       // z.B. wetter
+            $slug     = $p['post_name'];
+            $short    = substr($slug, strlen($slug_pre));
             $title    = $p['post_title'];
-            $icon     = $m['ds_icon']     ?? '📱';
-            $gruppe   = $m['ds_gruppe']   ?? 'landscape';       // landscape | portrait | liste
+            $icon     = $m['ds_icon']   ?? '📱';
+            $gruppe   = $m['ds_gruppe'] ?? 'landscape';
             $portrait = isset($m['ds_portrait']) && $m['ds_portrait'] === '1';
             $url      = rtrim($site_url, '/') . '/' . $slug . '/';
 
             $result[] = [
                 'title'    => $title,
-                'slug'     => $short,       // slug OHNE prefix für Regel-Key
+                'slug'     => $short,
                 'url'      => $url,
                 'icon'     => $icon,
                 'gruppe'   => $gruppe,
@@ -96,86 +113,71 @@ function wcr_ds_load_wp_pages(PDO $pdo, string $prefix, string $slug_pre, string
         return $result;
 
     } catch (Exception $e) {
+        $debug['error']     = $e->getMessage();
+        $debug['exception'] = get_class($e);
         return [];
     }
 }
 
-// ── Seiten laden ──
-$wp_seiten = wcr_ds_load_wp_pages($pdo, $WP_PREFIX, $DS_SLUG_PRE, $SITE_URL);
+$wp_debug   = [];
+$wp_seiten  = wcr_ds_load_wp_pages($pdo, $WP_PREFIX, $DS_SLUG_PRE, $SITE_URL, $wp_debug);
 
-// ── Fallback: statische Liste wenn keine WP-Seiten gefunden ──
 $fallback_seiten = [
-    ['title'=>'Starter Pack',    'slug'=>'starter-pack',          'url'=>$SITE_URL.'/starter-pack/',          'icon'=>'🏄','gruppe'=>'landscape','portrait'=>false],
-    ['title'=>'Wetter',          'slug'=>'wetter',                'url'=>$SITE_URL.'/wetter/',                'icon'=>'🌤','gruppe'=>'landscape','portrait'=>false],
-    ['title'=>'Wind Map',        'slug'=>'windmap',               'url'=>$SITE_URL.'/windmap/',               'icon'=>'💨','gruppe'=>'landscape','portrait'=>false],
-    ['title'=>'Tickets / Cable', 'slug'=>'tickets',               'url'=>$SITE_URL.'/tickets/',               'icon'=>'🏄','gruppe'=>'landscape','portrait'=>false],
-    ['title'=>'Kaffee',          'slug'=>'kaffee',                'url'=>$SITE_URL.'/kaffee/',                'icon'=>'☕',     'gruppe'=>'landscape','portrait'=>false],
-    ['title'=>'Merchandise',     'slug'=>'merchandise',           'url'=>$SITE_URL.'/merchandise/',           'icon'=>'👕','gruppe'=>'landscape','portrait'=>false],
-    ['title'=>'Stand Up Paddle', 'slug'=>'sup',                   'url'=>$SITE_URL.'/sup/',                   'icon'=>'🏄','gruppe'=>'landscape','portrait'=>false],
-    ['title'=>'Park',            'slug'=>'park',                  'url'=>$SITE_URL.'/park/',                  'icon'=>'🌊','gruppe'=>'landscape','portrait'=>false],
-    ['title'=>'Obstacles',       'slug'=>'obstacles',             'url'=>'https://wake-and-camp.de/obst/',    'icon'=>'🤸','gruppe'=>'landscape','portrait'=>false],
-    ['title'=>'Kino',            'slug'=>'kino',                  'url'=>$SITE_URL.'/kino/',                  'icon'=>'🎦','gruppe'=>'landscape','portrait'=>false],
-    ['title'=>'Cable Preisliste','slug'=>'cable-list',            'url'=>$SITE_URL.'/cable-list/',            'icon'=>'🎫','gruppe'=>'liste',   'portrait'=>false],
-    ['title'=>'Camping Preise',  'slug'=>'camping-list',          'url'=>$SITE_URL.'/camping-list/',          'icon'=>'⛺',     'gruppe'=>'liste',   'portrait'=>false],
-    ['title'=>'Eiskarte',        'slug'=>'eis',                   'url'=>$SITE_URL.'/eis/',                   'icon'=>'🍦','gruppe'=>'liste',   'portrait'=>false],
-    ['title'=>'Getränke',         'slug'=>'getraenke',            'url'=>$SITE_URL.'/getraenke/',            'icon'=>'🍺','gruppe'=>'liste',   'portrait'=>false],
-    ['title'=>'Softdrinks',      'slug'=>'soft',                  'url'=>$SITE_URL.'/soft/',                  'icon'=>'🥤','gruppe'=>'liste',   'portrait'=>false],
-    ['title'=>'Speisekarte',     'slug'=>'essen',                 'url'=>$SITE_URL.'/essen/',                 'icon'=>'🍔','gruppe'=>'liste',   'portrait'=>false],
-    ['title'=>'Burger Table',    'slug'=>'produkt-table',         'url'=>$SITE_URL.'/produkt-table/',         'icon'=>'🍔','gruppe'=>'spotlight','portrait'=>false],
+    ['title'=>'Starter Pack',       'slug'=>'starter-pack',          'url'=>$SITE_URL.'/starter-pack/',          'icon'=>'🏄','gruppe'=>'landscape','portrait'=>false],
+    ['title'=>'Wetter',             'slug'=>'wetter',                'url'=>$SITE_URL.'/wetter/',                'icon'=>'🌤','gruppe'=>'landscape','portrait'=>false],
+    ['title'=>'Wind Map',           'slug'=>'windmap',               'url'=>$SITE_URL.'/windmap/',               'icon'=>'💨','gruppe'=>'landscape','portrait'=>false],
+    ['title'=>'Tickets / Cable',    'slug'=>'tickets',               'url'=>$SITE_URL.'/tickets/',               'icon'=>'🏄','gruppe'=>'landscape','portrait'=>false],
+    ['title'=>'Kaffee',             'slug'=>'kaffee',                'url'=>$SITE_URL.'/kaffee/',                'icon'=>'☕','gruppe'=>'landscape','portrait'=>false],
+    ['title'=>'Merchandise',        'slug'=>'merchandise',           'url'=>$SITE_URL.'/merchandise/',           'icon'=>'👕','gruppe'=>'landscape','portrait'=>false],
+    ['title'=>'Stand Up Paddle',    'slug'=>'sup',                   'url'=>$SITE_URL.'/sup/',                   'icon'=>'🏄','gruppe'=>'landscape','portrait'=>false],
+    ['title'=>'Park',               'slug'=>'park',                  'url'=>$SITE_URL.'/park/',                  'icon'=>'🌊','gruppe'=>'landscape','portrait'=>false],
+    ['title'=>'Obstacles',          'slug'=>'obstacles',             'url'=>'https://wake-and-camp.de/obst/',    'icon'=>'🤸','gruppe'=>'landscape','portrait'=>false],
+    ['title'=>'Kino',               'slug'=>'kino',                  'url'=>$SITE_URL.'/kino/',                  'icon'=>'🎦','gruppe'=>'landscape','portrait'=>false],
+    ['title'=>'Cable Preisliste',   'slug'=>'cable-list',            'url'=>$SITE_URL.'/cable-list/',            'icon'=>'🎫','gruppe'=>'liste',   'portrait'=>false],
+    ['title'=>'Camping Preise',     'slug'=>'camping-list',          'url'=>$SITE_URL.'/camping-list/',          'icon'=>'⛺','gruppe'=>'liste',   'portrait'=>false],
+    ['title'=>'Eiskarte',           'slug'=>'eis',                   'url'=>$SITE_URL.'/eis/',                   'icon'=>'🍦','gruppe'=>'liste',   'portrait'=>false],
+    ['title'=>'Getränke',           'slug'=>'getraenke',             'url'=>$SITE_URL.'/getraenke/',             'icon'=>'🍺','gruppe'=>'liste',   'portrait'=>false],
+    ['title'=>'Softdrinks',         'slug'=>'soft',                  'url'=>$SITE_URL.'/soft/',                  'icon'=>'🥤','gruppe'=>'liste',   'portrait'=>false],
+    ['title'=>'Speisekarte',        'slug'=>'essen',                 'url'=>$SITE_URL.'/essen/',                 'icon'=>'🍔','gruppe'=>'liste',   'portrait'=>false],
+    ['title'=>'Burger Table',       'slug'=>'produkt-table',         'url'=>$SITE_URL.'/produkt-table/',         'icon'=>'🍔','gruppe'=>'spotlight','portrait'=>false],
     ['title'=>'Öffnungszeiten Story','slug'=>'oeffnungszeiten-story','url'=>$SITE_URL.'/oeffnungszeiten-story/','icon'=>'🕐','gruppe'=>'portrait','portrait'=>true],
-    ['title'=>'Instagram Grid',  'slug'=>'insta',                 'url'=>$SITE_URL.'/insta/',                 'icon'=>'📸','gruppe'=>'portrait','portrait'=>true],
-    ['title'=>'Instagram Reels', 'slug'=>'insta-reel',            'url'=>$SITE_URL.'/insta-reel/',            'icon'=>'🎥','gruppe'=>'portrait','portrait'=>true],
-    ['title'=>'Cable-Park Portrait','slug'=>'park-portrait',      'url'=>$SITE_URL.'/park-portrait/',         'icon'=>'🌊','gruppe'=>'portrait','portrait'=>true],
+    ['title'=>'Instagram Grid',     'slug'=>'insta',                 'url'=>$SITE_URL.'/insta/',                 'icon'=>'📸','gruppe'=>'portrait','portrait'=>true],
+    ['title'=>'Instagram Reels',    'slug'=>'insta-reel',            'url'=>$SITE_URL.'/insta-reel/',            'icon'=>'🎥','gruppe'=>'portrait','portrait'=>true],
+    ['title'=>'Cable-Park Portrait','slug'=>'park-portrait',         'url'=>$SITE_URL.'/park-portrait/',         'icon'=>'🌊','gruppe'=>'portrait','portrait'=>true],
 ];
 
-$raw_seiten  = !empty($wp_seiten) ? $wp_seiten : $fallback_seiten;
-$using_wp    = !empty($wp_seiten);
+$raw_seiten = !empty($wp_seiten) ? $wp_seiten : $fallback_seiten;
+$using_wp   = !empty($wp_seiten);
 
-// ── Gruppen-Definition ──
 $gruppen_def = [
     'landscape' => ['label' => '🖼️ 16:9 — Landscape', 'portrait' => false],
-    'liste'     => ['label' => '📱 Listen',               'portrait' => false],
-    'spotlight' => ['label' => '📱 Produkt-Spotlight',    'portrait' => false],
-    'portrait'  => ['label' => '📱 9:16 — Portrait',     'portrait' => true],
+    'liste'     => ['label' => '📱 Listen',              'portrait' => false],
+    'spotlight' => ['label' => '📱 Produkt-Spotlight',   'portrait' => false],
+    'portrait'  => ['label' => '📱 9:16 — Portrait',    'portrait' => true],
 ];
 
-// Seiten in Gruppen sortieren
 $gruppen = [];
 foreach ($gruppen_def as $gkey => $gdef) {
-    $gruppen[$gkey] = [
-        'label'    => $gdef['label'],
-        'portrait' => $gdef['portrait'],
-        'seiten'   => [],
-    ];
+    $gruppen[$gkey] = ['label' => $gdef['label'], 'portrait' => $gdef['portrait'], 'seiten' => []];
 }
-
 foreach ($raw_seiten as $s) {
     $gkey = $s['gruppe'] ?? 'landscape';
-    if (!isset($gruppen[$gkey])) {
-        // Unbekannte Gruppe → landscape
-        $gkey = 'landscape';
-    }
+    if (!isset($gruppen[$gkey])) $gkey = 'landscape';
     $gruppen[$gkey]['seiten'][] = $s;
 }
-
-// Leere Gruppen entfernen
 $gruppen = array_filter($gruppen, fn($g) => !empty($g['seiten']));
 
-// ── Live DB-Status prüfen ──
 function wcr_ds_check_status(array $rule, PDO $pdo, array $allowed_tables): array {
     $tables  = array_values(array_intersect((array)($rule['tables'] ?? []), $allowed_tables));
     $typ     = trim($rule['typ'] ?? '');
     $ids_raw = trim($rule['ids'] ?? '');
     $mode    = ($rule['mode'] ?? 'any') === 'all' ? 'all' : 'any';
-
-    if (empty($tables) && $typ === '' && $ids_raw === '') {
+    if (empty($tables) && $typ === '' && $ids_raw === '')
         return ['active' => true, 'reason' => 'no_rule', 'db_ok' => true];
-    }
     $check_tables = !empty($tables) ? $tables : $allowed_tables;
-
     try {
         if ($ids_raw !== '') {
-            $ids   = array_filter(array_map('intval', explode(',', $ids_raw)));
+            $ids = array_filter(array_map('intval', explode(',', $ids_raw)));
             if (empty($ids)) return ['active' => true, 'reason' => 'ids_empty', 'db_ok' => true];
             $found = 0; $total = count($ids);
             foreach ($ids as $id) {
@@ -209,11 +211,10 @@ function wcr_ds_check_status(array $rule, PDO $pdo, array $allowed_tables): arra
     }
 }
 
-// ── Globale Index-Liste aufbauen ──
 $alle_seiten = [];
 foreach ($gruppen as &$g) {
     foreach ($g['seiten'] as &$s) {
-        $s['_idx']     = count($alle_seiten);
+        $s['_idx'] = count($alle_seiten);
         $s['portrait'] = $g['portrait'];
         $rule = $rules[$s['slug']] ?? ['override'=>'auto','tables'=>[],'typ'=>'','ids'=>'','mode'=>'any'];
         $s['rule']   = $rule;
@@ -223,7 +224,6 @@ foreach ($gruppen as &$g) {
 }
 unset($g, $s);
 
-// ── POST: Regel speichern ──
 $save_msg = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['wcr_ds_save'])) {
     wcr_require('view_ds');
@@ -242,7 +242,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['wcr_ds_save'])) {
     }
 }
 
-// Typ-Vorschläge für Datalist
 $typen_all = [];
 foreach ($ALLOWED_TABLES as $tbl) {
     try {
@@ -260,56 +259,63 @@ $ds_count = count($alle_seiten);
   <meta charset="UTF-8">
   <title>Verwaltung: <?= htmlspecialchars($PAGE_TITLE, ENT_QUOTES, 'UTF-8') ?></title>
   <style>
-    .ds-source-badge { display:inline-flex;align-items:center;gap:5px;font-size:.72rem;font-weight:600;padding:3px 10px;border-radius:20px;margin-left:8px; }
-    .ds-source-badge.wp  { background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7; }
-    .ds-source-badge.fb  { background:#fff3e0;color:#e65100;border:1px solid #ffcc80; }
-    .ds-group { margin-bottom: 40px; }
-    .ds-group-label { font-size:.8rem;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:#6b7280;padding:0 0 10px;border-bottom:2px solid #e5e7eb;margin-bottom:16px;display:flex;align-items:center;gap:8px; }
-    .ds-group-label span.cnt { font-size:.7rem;font-weight:600;background:#f3f4f6;color:#9ca3af;border:1px solid #e5e7eb;border-radius:20px;padding:1px 8px;letter-spacing:0;text-transform:none; }
-    .ds-gallery-landscape { display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:20px;align-items:start; }
-    .ds-gallery-portrait  { display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,280px));gap:20px;align-items:start; }
-    .ds-card { background:#fff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;transition:transform .2s,box-shadow .2s; }
-    .ds-card:hover { transform:translateY(-3px);box-shadow:0 10px 32px rgba(0,0,0,.1); }
-    .ds-card.ds-inactive { opacity:.7;border-color:#fca5a5; }
-    .ds-card-header { display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #e5e7eb;background:#f9fafb;gap:8px;flex-wrap:wrap; }
-    .ds-card-title  { display:flex;align-items:center;gap:7px;font-size:.88rem;font-weight:700;color:#111;min-width:0; }
-    .ds-card-actions { display:flex;align-items:center;gap:5px;flex-shrink:0; }
-    .ds-badge { display:inline-flex;align-items:center;gap:4px;font-size:.65rem;font-weight:600;padding:2px 8px;border-radius:20px;border:1px solid transparent;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap; }
-    .ds-dot { width:5px;height:5px;border-radius:50%;flex-shrink:0;animation:ds-blink 2s infinite; }
+    .ds-source-badge{display:inline-flex;align-items:center;gap:5px;font-size:.72rem;font-weight:600;padding:3px 10px;border-radius:20px;margin-left:8px;}
+    .ds-source-badge.wp{background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;}
+    .ds-source-badge.fb{background:#fff3e0;color:#e65100;border:1px solid #ffcc80;}
+    .ds-group{margin-bottom:40px;}
+    .ds-group-label{font-size:.8rem;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:#6b7280;padding:0 0 10px;border-bottom:2px solid #e5e7eb;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
+    .ds-group-label span.cnt{font-size:.7rem;font-weight:600;background:#f3f4f6;color:#9ca3af;border:1px solid #e5e7eb;border-radius:20px;padding:1px 8px;letter-spacing:0;text-transform:none;}
+    .ds-gallery-landscape{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:20px;align-items:start;}
+    .ds-gallery-portrait{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,280px));gap:20px;align-items:start;}
+    .ds-card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;transition:transform .2s,box-shadow .2s;}
+    .ds-card:hover{transform:translateY(-3px);box-shadow:0 10px 32px rgba(0,0,0,.1);}
+    .ds-card.ds-inactive{opacity:.7;border-color:#fca5a5;}
+    .ds-card-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #e5e7eb;background:#f9fafb;gap:8px;flex-wrap:wrap;}
+    .ds-card-title{display:flex;align-items:center;gap:7px;font-size:.88rem;font-weight:700;color:#111;min-width:0;}
+    .ds-card-actions{display:flex;align-items:center;gap:5px;flex-shrink:0;}
+    .ds-badge{display:inline-flex;align-items:center;gap:4px;font-size:.65rem;font-weight:600;padding:2px 8px;border-radius:20px;border:1px solid transparent;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;}
+    .ds-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0;animation:ds-blink 2s infinite;}
     @keyframes ds-blink{0%,100%{opacity:1}50%{opacity:.3}}
-    .ds-btn { display:inline-flex;align-items:center;gap:4px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:7px;color:#555;font-size:.75rem;padding:3px 8px;cursor:pointer;text-decoration:none;transition:background .15s;white-space:nowrap; }
-    .ds-btn:hover { background:#e5e7eb;color:#111; }
-    .ds-btn.primary { background:#e8f5ff;border-color:#bdd9f5;color:#1a6fb5; }
-    .ds-btn.primary:hover { background:#d0eaff; }
-    .ds-btn.edit-btn { background:#fff8e1;border-color:#f0c040;color:#b45309; }
-    .ds-btn.edit-btn:hover { background:#fff3c4; }
-    .ds-frame-wrap { position:relative;width:100%;background:#111;overflow:hidden;min-height:40px; }
-    .ds-frame-wrap iframe { display:block;position:absolute;top:0;left:0;border:none;opacity:0;transition:opacity .5s;pointer-events:none;transform-origin:top left; }
-    .ds-frame-wrap iframe.loaded { opacity:1; }
-    .ds-spin-wrap { position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:.75rem;color:#555;z-index:2;background:#1a1a2e;transition:opacity .3s; }
-    .ds-spin-wrap.hidden { opacity:0;pointer-events:none; }
-    .ds-spinner { width:24px;height:24px;border:2px solid rgba(255,255,255,.1);border-top-color:#3b82f6;border-radius:50%;animation:ds-spin .75s linear infinite; }
+    .ds-btn{display:inline-flex;align-items:center;gap:4px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:7px;color:#555;font-size:.75rem;padding:3px 8px;cursor:pointer;text-decoration:none;transition:background .15s;white-space:nowrap;}
+    .ds-btn:hover{background:#e5e7eb;color:#111;}
+    .ds-btn.primary{background:#e8f5ff;border-color:#bdd9f5;color:#1a6fb5;}
+    .ds-btn.primary:hover{background:#d0eaff;}
+    .ds-btn.edit-btn{background:#fff8e1;border-color:#f0c040;color:#b45309;}
+    .ds-btn.edit-btn:hover{background:#fff3c4;}
+    .ds-frame-wrap{position:relative;width:100%;background:#111;overflow:hidden;min-height:40px;}
+    .ds-frame-wrap iframe{display:block;position:absolute;top:0;left:0;border:none;opacity:0;transition:opacity .5s;pointer-events:none;transform-origin:top left;}
+    .ds-frame-wrap iframe.loaded{opacity:1;}
+    .ds-spin-wrap{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:.75rem;color:#555;z-index:2;background:#1a1a2e;transition:opacity .3s;}
+    .ds-spin-wrap.hidden{opacity:0;pointer-events:none;}
+    .ds-spinner{width:24px;height:24px;border:2px solid rgba(255,255,255,.1);border-top-color:#3b82f6;border-radius:50%;animation:ds-spin .75s linear infinite;}
     @keyframes ds-spin{to{transform:rotate(360deg)}}
-    .ds-card-footer { display:flex;align-items:center;justify-content:space-between;padding:6px 14px;border-top:1px solid #e5e7eb;background:#f9fafb; }
-    .ds-url  { font-size:.62rem;color:#9ca3af;font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:65%; }
-    .ds-time { font-size:.62rem;color:#9ca3af;white-space:nowrap; }
-    .rule-panel { padding:12px 14px;border-top:2px dashed #e5e7eb;background:#fafafa;display:none; }
-    .rule-panel.open { display:block; }
-    .rule-panel form { display:flex;flex-direction:column;gap:8px; }
-    .rule-row { display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.8rem; }
-    .rule-row label { font-weight:600;min-width:70px;color:#374151; }
-    .rule-row input[type=text],.rule-row select { border:1px solid #d1d5db;border-radius:6px;padding:4px 8px;font-size:.8rem;flex:1;min-width:120px; }
-    .rule-cb-group { display:flex;flex-wrap:wrap;gap:6px; }
-    .rule-cb-group label { font-weight:400;min-width:auto;display:flex;align-items:center;gap:4px; }
-    .rule-status { font-size:.75rem;padding:4px 8px;border-radius:6px;font-weight:600; }
-    .rule-status.active   { background:#d1fae5;color:#065f46; }
-    .rule-status.inactive { background:#fee2e2;color:#991b1b; }
-    .rule-status.dberr    { background:#fef3c7;color:#92400e; }
-    .rule-save-btn { align-self:flex-end;background:#0071e3;color:#fff;border:none;border-radius:8px;padding:5px 16px;font-size:.8rem;font-weight:600;cursor:pointer; }
-    .rule-save-btn:hover { background:#005bb5; }
-    .save-notice { padding:10px 20px;margin-bottom:16px;background:#d1fae5;border:1px solid #6ee7b7;border-radius:8px;color:#065f46;font-weight:600; }
-    .ds-info-box { padding:10px 16px;margin-bottom:20px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:.8rem;color:#1e40af;line-height:1.6; }
-    .ds-info-box code { background:#dbeafe;padding:1px 5px;border-radius:4px;font-size:.78rem; }
+    .ds-card-footer{display:flex;align-items:center;justify-content:space-between;padding:6px 14px;border-top:1px solid #e5e7eb;background:#f9fafb;}
+    .ds-url{font-size:.62rem;color:#9ca3af;font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:65%;}
+    .ds-time{font-size:.62rem;color:#9ca3af;white-space:nowrap;}
+    .rule-panel{padding:12px 14px;border-top:2px dashed #e5e7eb;background:#fafafa;display:none;}
+    .rule-panel.open{display:block;}
+    .rule-panel form{display:flex;flex-direction:column;gap:8px;}
+    .rule-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.8rem;}
+    .rule-row label{font-weight:600;min-width:70px;color:#374151;}
+    .rule-row input[type=text],.rule-row select{border:1px solid #d1d5db;border-radius:6px;padding:4px 8px;font-size:.8rem;flex:1;min-width:120px;}
+    .rule-cb-group{display:flex;flex-wrap:wrap;gap:6px;}
+    .rule-cb-group label{font-weight:400;min-width:auto;display:flex;align-items:center;gap:4px;}
+    .rule-status{font-size:.75rem;padding:4px 8px;border-radius:6px;font-weight:600;}
+    .rule-status.active{background:#d1fae5;color:#065f46;}
+    .rule-status.inactive{background:#fee2e2;color:#991b1b;}
+    .rule-status.dberr{background:#fef3c7;color:#92400e;}
+    .rule-save-btn{align-self:flex-end;background:#0071e3;color:#fff;border:none;border-radius:8px;padding:5px 16px;font-size:.8rem;font-weight:600;cursor:pointer;}
+    .rule-save-btn:hover{background:#005bb5;}
+    .save-notice{padding:10px 20px;margin-bottom:16px;background:#d1fae5;border:1px solid #6ee7b7;border-radius:8px;color:#065f46;font-weight:600;}
+    .ds-info-box{padding:12px 16px;margin-bottom:16px;border-radius:8px;font-size:.8rem;line-height:1.6;}
+    .ds-info-box.warn{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;}
+    .ds-info-box.err{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;}
+    .ds-info-box code{background:#dbeafe;padding:1px 5px;border-radius:4px;font-size:.78rem;}
+    .ds-info-box.err code{background:#fee2e2;}
+    .ds-debug-table{width:100%;border-collapse:collapse;margin-top:8px;font-size:.75rem;}
+    .ds-debug-table td,.ds-debug-table th{padding:3px 8px;border:1px solid #e5e7eb;text-align:left;}
+    .ds-debug-table th{background:#f3f4f6;font-weight:700;}
+    .ds-debug-toggle{cursor:pointer;font-size:.72rem;color:#6b7280;text-decoration:underline;margin-top:6px;display:inline-block;}
   </style>
 </head>
 <body class="bo" data-csrf="<?= wcr_csrf_attr() ?>">
@@ -325,10 +331,39 @@ $ds_count = count($alle_seiten);
 </div>
 
 <?php if (!$using_wp): ?>
-<div class="ds-info-box">
-  ⚠️ <strong>Keine WP-Seiten mit Prefix <code>ds-</code> gefunden.</strong><br>
-  Erstelle in WordPress Seiten mit Slug-Prefix <code>ds-</code> (z.B. <code>ds-wetter</code>, <code>ds-park</code>).<br>
-  Optional: Custom Fields <code>ds_gruppe</code> (landscape / liste / portrait / spotlight), <code>ds_icon</code> (Emoji), <code>ds_portrait</code> (1 oder 0) setzen.
+<div class="ds-info-box <?= isset($wp_debug['error']) ? 'err' : 'warn' ?>">
+  <?php if (isset($wp_debug['error'])): ?>
+    🔴 <strong>DB-Fehler:</strong> <code><?= htmlspecialchars($wp_debug['error'], ENT_QUOTES, 'UTF-8') ?></code>
+    <?php if (!empty($wp_debug['exception'])): ?>
+      <br><small><?= htmlspecialchars($wp_debug['exception'], ENT_QUOTES, 'UTF-8') ?></small>
+    <?php endif; ?>
+  <?php else: ?>
+    ⚠️ <strong>Keine WP-Seiten mit Prefix <code>ds-</code> gefunden</strong>
+    <?php if (!empty($wp_debug['all_tables'])): ?>
+      — DB erreichbar ✅
+    <?php endif; ?>
+  <?php endif; ?>
+
+  <?php if (!empty($wp_debug['all_pages'])): ?>
+    <br><br>
+    <strong>📋 Alle publizierten Seiten in der DB (max. 20) — prüfe ob Slugs mit <code>ds-</code> beginnen:</strong>
+    <table class="ds-debug-table">
+      <tr><th>post_name (Slug)</th><th>post_title</th></tr>
+      <?php foreach ($wp_debug['all_pages'] as $dp): ?>
+      <tr>
+        <td><code><?= htmlspecialchars($dp['post_name'], ENT_QUOTES, 'UTF-8') ?></code>
+          <?= str_starts_with($dp['post_name'], 'ds-') ? ' ✅' : '' ?>
+        </td>
+        <td><?= htmlspecialchars($dp['post_title'], ENT_QUOTES, 'UTF-8') ?></td>
+      </tr>
+      <?php endforeach; ?>
+    </table>
+  <?php elseif (isset($wp_debug['table_exists'])): ?>
+    <br><small>⚠️ Keine publizierten Seiten in der Tabelle <code>wp_posts</code> gefunden.</small>
+  <?php elseif (!empty($wp_debug['all_tables'])): ?>
+    <br><br><strong>Vorhandene Tabellen:</strong><br>
+    <code><?= implode(', ', array_map(fn($t) => htmlspecialchars($t, ENT_QUOTES, 'UTF-8'), $wp_debug['all_tables'])) ?></code>
+  <?php endif; ?>
 </div>
 <?php endif; ?>
 
@@ -349,11 +384,11 @@ $ds_count = count($alle_seiten);
   </div>
   <div class="<?= $gridClass ?>">
     <?php foreach ($g['seiten'] as $s):
-      $i          = $s['_idx'];
-      $status     = $s['status'];
-      $rule       = $s['rule'];
-      $ov         = $rule['override'] ?? 'auto';
-      $effektiv   = ($ov === 'force_on') ? true : (($ov === 'force_off') ? false : $status['active']);
+      $i        = $s['_idx'];
+      $status   = $s['status'];
+      $rule     = $s['rule'];
+      $ov       = $rule['override'] ?? 'auto';
+      $effektiv = ($ov === 'force_on') ? true : (($ov === 'force_off') ? false : $status['active']);
       $badgeColor = $effektiv ? '#00c853' : '#ff3b30';
       $badgeText  = $effektiv ? 'Aktiv' : 'Inaktiv';
     ?>
@@ -368,9 +403,7 @@ $ds_count = count($alle_seiten);
             <span class="ds-dot" style="background:<?= $badgeColor ?>"></span>
             <?= htmlspecialchars($badgeText, ENT_QUOTES, 'UTF-8') ?>
           </span>
-          <?php if (!$status['db_ok']): ?>
-          <span title="DB-Fehler" style="font-size:.8rem;">⚠️</span>
-          <?php endif; ?>
+          <?php if (!$status['db_ok']): ?><span title="DB-Fehler" style="font-size:.8rem;">⚠️</span><?php endif; ?>
           <button class="ds-btn edit-btn" onclick="toggleRule(<?= $i ?>)">✎ Regel</button>
           <button class="ds-btn" onclick="dsReload(<?= $i ?>)">↺</button>
           <a class="ds-btn primary" href="<?= htmlspecialchars($s['url'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener">↗ Öffnen</a>
@@ -382,45 +415,30 @@ $ds_count = count($alle_seiten);
           <?= wcr_csrf_field() ?>
           <input type="hidden" name="wcr_ds_save" value="1">
           <input type="hidden" name="page_slug" value="<?= htmlspecialchars($s['slug'], ENT_QUOTES, 'UTF-8') ?>">
-          <div class="rule-row">
-            <label>Override</label>
+          <div class="rule-row"><label>Override</label>
             <select name="override">
               <option value="auto"      <?= ($ov==='auto')      ?'selected':'' ?>>Auto (DB-Check)</option>
               <option value="force_on"  <?= ($ov==='force_on')  ?'selected':'' ?>>Force ON</option>
               <option value="force_off" <?= ($ov==='force_off') ?'selected':'' ?>>Force OFF</option>
             </select>
           </div>
-          <div class="rule-row">
-            <label>Tabellen</label>
+          <div class="rule-row"><label>Tabellen</label>
             <div class="rule-cb-group">
               <?php foreach ($ALLOWED_TABLES as $tbl): ?>
-              <label>
-                <input type="checkbox" name="tables[]" value="<?= htmlspecialchars($tbl, ENT_QUOTES, 'UTF-8') ?>"
-                  <?= in_array($tbl,(array)($rule['tables']??[]),true)?'checked':'' ?>>
-                <?= htmlspecialchars($tbl, ENT_QUOTES, 'UTF-8') ?>
-              </label>
+              <label><input type="checkbox" name="tables[]" value="<?= htmlspecialchars($tbl, ENT_QUOTES, 'UTF-8') ?>"
+                <?= in_array($tbl,(array)($rule['tables']??[]),true)?'checked':'' ?>>
+                <?= htmlspecialchars($tbl, ENT_QUOTES, 'UTF-8') ?></label>
               <?php endforeach; ?>
             </div>
           </div>
-          <div class="rule-row">
-            <label>Typ</label>
-            <input type="text" name="typ"
-                   value="<?= htmlspecialchars($rule['typ']??'', ENT_QUOTES, 'UTF-8') ?>"
-                   list="typen-list" placeholder="z.B. Burger, Softdrink …">
-            <datalist id="typen-list">
-              <?php foreach ($typen_all as $tv): ?>
-              <option value="<?= htmlspecialchars($tv, ENT_QUOTES, 'UTF-8') ?>"></option>
-              <?php endforeach; ?>
-            </datalist>
+          <div class="rule-row"><label>Typ</label>
+            <input type="text" name="typ" value="<?= htmlspecialchars($rule['typ']??'', ENT_QUOTES, 'UTF-8') ?>" list="typen-list" placeholder="z.B. Burger, Softdrink …">
+            <datalist id="typen-list"><?php foreach ($typen_all as $tv): ?><option value="<?= htmlspecialchars($tv, ENT_QUOTES, 'UTF-8') ?>"></option><?php endforeach; ?></datalist>
           </div>
-          <div class="rule-row">
-            <label>IDs</label>
-            <input type="text" name="ids"
-                   value="<?= htmlspecialchars($rule['ids']??'', ENT_QUOTES, 'UTF-8') ?>"
-                   placeholder="3010,3089,3162">
+          <div class="rule-row"><label>IDs</label>
+            <input type="text" name="ids" value="<?= htmlspecialchars($rule['ids']??'', ENT_QUOTES, 'UTF-8') ?>" placeholder="3010,3089,3162">
           </div>
-          <div class="rule-row">
-            <label>Mode</label>
+          <div class="rule-row"><label>Mode</label>
             <select name="mode">
               <option value="any" <?= (($rule['mode']??'any')==='any')?'selected':'' ?>>any – mind. 1 aktiv</option>
               <option value="all" <?= (($rule['mode']??'any')==='all')?'selected':'' ?>>all – alle müssen aktiv sein</option>
@@ -437,8 +455,7 @@ $ds_count = count($alle_seiten);
 
       <div class="ds-frame-wrap" id="ds-wrap-<?= $i ?>">
         <div class="ds-spin-wrap" id="ds-spin-<?= $i ?>">
-          <div class="ds-spinner"></div>
-          <span>Lädt…</span>
+          <div class="ds-spinner"></div><span>Lädt…</span>
         </div>
         <iframe id="ds-frame-<?= $i ?>"
           data-src="<?= htmlspecialchars($s['url'], ENT_QUOTES, 'UTF-8') ?>"
@@ -460,7 +477,6 @@ $ds_count = count($alle_seiten);
 <script>
 var DS_COUNT = <?= json_encode($ds_count) ?>;
 var dsStartTimes = {};
-
 function dsScaleWrap(wrap) {
   var iframe = wrap.querySelector('iframe');
   if (!iframe) return;
