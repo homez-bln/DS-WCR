@@ -1,7 +1,7 @@
 <?php
 /**
  * ctrl/ds-seiten.php — DS-Seiten Vorschau + Aktivierungssteuerung
- * v4.1: WP REST API, PHP 7 kompatibel
+ * v4.2: WP REST API + numerisches Slug-Prefix Sorting (ds-10-wetter)
  */
 require_once __DIR__ . '/../inc/auth.php';
 require_once __DIR__ . '/../inc/db.php';
@@ -26,6 +26,18 @@ function wcr_ds_save_rules(string $file, array $rules): void {
 }
 
 $rules = wcr_ds_load_rules($RULES_FILE);
+
+/**
+ * Numerisches Prefix aus dem Short-Slug extrahieren.
+ * "10-wetter"  => ['order' => 10,   'slug' => 'wetter']
+ * "wetter"     => ['order' => 9999, 'slug' => 'wetter']
+ */
+function wcr_ds_parse_slug(string $short): array {
+    if (preg_match('/^(\d+)-(.+)$/', $short, $m)) {
+        return ['order' => (int)$m[1], 'slug' => $m[2]];
+    }
+    return ['order' => 9999, 'slug' => $short];
+}
 
 // ── WP-Seiten via REST API laden ──
 function wcr_ds_load_wp_pages_api(string $api_base, string $slug_pre, string $site_url): array
@@ -61,12 +73,16 @@ function wcr_ds_load_wp_pages_api(string $api_base, string $slug_pre, string $si
 
     $result = [];
     foreach ($data as $p) {
-        $slug = isset($p['slug']) ? $p['slug'] : '';
-        // PHP 7 kompatibel: kein str_starts_with
-        if (strpos($slug, $slug_pre) !== 0) continue;
+        $full_slug = isset($p['slug']) ? $p['slug'] : '';
+        if (strpos($full_slug, $slug_pre) !== 0) continue;
 
-        $short = substr($slug, strlen($slug_pre));
-        $title = isset($p['title']['rendered']) ? $p['title']['rendered'] : $slug;
+        // Short = alles nach "ds-", dann nach Zahl-Prefix aufsplitten
+        $after = substr($full_slug, strlen($slug_pre));  // z.B. "10-wetter"
+        $parsed = wcr_ds_parse_slug($after);
+        $short  = $parsed['slug'];   // z.B. "wetter"
+        $order  = $parsed['order'];  // z.B. 10
+
+        $title = isset($p['title']['rendered']) ? $p['title']['rendered'] : $full_slug;
         $title = strip_tags(html_entity_decode($title, ENT_QUOTES, 'UTF-8'));
 
         $acf    = isset($p['acf'])  && is_array($p['acf'])  ? $p['acf']  : [];
@@ -78,15 +94,23 @@ function wcr_ds_load_wp_pages_api(string $api_base, string $slug_pre, string $si
         $port   = ($port_v === '1' || $port_v === 1 || $port_v === true);
 
         $result[] = [
-            'title'    => $title,
-            'slug'     => $short,
-            'url'      => rtrim($site_url, '/') . '/' . $slug . '/',
-            'icon'     => $icon ?: '📱',
-            'gruppe'   => $gruppe ?: 'landscape',
-            'portrait' => $port,
-            'wp_id'    => isset($p['id']) ? (int)$p['id'] : 0,
+            'title'      => $title,
+            'slug'       => $short,        // ohne Zahl-Prefix → Regelkey
+            'full_slug'  => $full_slug,    // vollständiger WP-Slug für URL
+            'url'        => rtrim($site_url, '/') . '/' . $full_slug . '/',
+            'icon'       => $icon ?: '📱',
+            'gruppe'     => $gruppe ?: 'landscape',
+            'portrait'   => $port,
+            'sort_order' => $order,
+            'wp_id'      => isset($p['id']) ? (int)$p['id'] : 0,
         ];
     }
+
+    // Innerhalb der Ergebnisse nach sort_order sortieren
+    usort($result, function($a, $b) {
+        return $a['sort_order'] - $b['sort_order'];
+    });
+
     return ['pages' => $result, 'total_wp' => count($data)];
 }
 
@@ -97,27 +121,27 @@ $api_total  = isset($api_result['total_wp']) ? $api_result['total_wp'] : null;
 
 // ── Fallback-Liste ──
 $fallback_seiten = [
-    ['title'=>'Starter Pack',       'slug'=>'starter-pack',          'url'=>$SITE_URL.'/starter-pack/',          'icon'=>'🏄','gruppe'=>'landscape','portrait'=>false],
-    ['title'=>'Wetter',             'slug'=>'wetter',                'url'=>$SITE_URL.'/wetter/',                'icon'=>'🌤','gruppe'=>'landscape','portrait'=>false],
-    ['title'=>'Wind Map',           'slug'=>'windmap',               'url'=>$SITE_URL.'/windmap/',               'icon'=>'💨','gruppe'=>'landscape','portrait'=>false],
-    ['title'=>'Tickets / Cable',    'slug'=>'tickets',               'url'=>$SITE_URL.'/tickets/',               'icon'=>'🏄','gruppe'=>'landscape','portrait'=>false],
-    ['title'=>'Kaffee',             'slug'=>'kaffee',                'url'=>$SITE_URL.'/kaffee/',                'icon'=>'☕','gruppe'=>'landscape','portrait'=>false],
-    ['title'=>'Merchandise',        'slug'=>'merchandise',           'url'=>$SITE_URL.'/merchandise/',           'icon'=>'👕','gruppe'=>'landscape','portrait'=>false],
-    ['title'=>'Stand Up Paddle',    'slug'=>'sup',                   'url'=>$SITE_URL.'/sup/',                   'icon'=>'🏄','gruppe'=>'landscape','portrait'=>false],
-    ['title'=>'Park',               'slug'=>'park',                  'url'=>$SITE_URL.'/park/',                  'icon'=>'🌊','gruppe'=>'landscape','portrait'=>false],
-    ['title'=>'Obstacles',          'slug'=>'obstacles',             'url'=>'https://wake-and-camp.de/obst/',    'icon'=>'🤸','gruppe'=>'landscape','portrait'=>false],
-    ['title'=>'Kino',               'slug'=>'kino',                  'url'=>$SITE_URL.'/kino/',                  'icon'=>'🎦','gruppe'=>'landscape','portrait'=>false],
-    ['title'=>'Cable Preisliste',   'slug'=>'cable-list',            'url'=>$SITE_URL.'/cable-list/',            'icon'=>'🎫','gruppe'=>'liste',   'portrait'=>false],
-    ['title'=>'Camping Preise',     'slug'=>'camping-list',          'url'=>$SITE_URL.'/camping-list/',          'icon'=>'⛺','gruppe'=>'liste',   'portrait'=>false],
-    ['title'=>'Eiskarte',           'slug'=>'eis',                   'url'=>$SITE_URL.'/eis/',                   'icon'=>'🍦','gruppe'=>'liste',   'portrait'=>false],
-    ['title'=>'Getränke',           'slug'=>'getraenke',             'url'=>$SITE_URL.'/getraenke/',             'icon'=>'🍺','gruppe'=>'liste',   'portrait'=>false],
-    ['title'=>'Softdrinks',         'slug'=>'soft',                  'url'=>$SITE_URL.'/soft/',                  'icon'=>'🥤','gruppe'=>'liste',   'portrait'=>false],
-    ['title'=>'Speisekarte',        'slug'=>'essen',                 'url'=>$SITE_URL.'/essen/',                 'icon'=>'🍔','gruppe'=>'liste',   'portrait'=>false],
-    ['title'=>'Burger Table',       'slug'=>'produkt-table',         'url'=>$SITE_URL.'/produkt-table/',         'icon'=>'🍔','gruppe'=>'spotlight','portrait'=>false],
-    ['title'=>'Öffnungszeiten Story','slug'=>'oeffnungszeiten-story','url'=>$SITE_URL.'/oeffnungszeiten-story/','icon'=>'🕐','gruppe'=>'portrait','portrait'=>true],
-    ['title'=>'Instagram Grid',     'slug'=>'insta',                 'url'=>$SITE_URL.'/insta/',                 'icon'=>'📸','gruppe'=>'portrait','portrait'=>true],
-    ['title'=>'Instagram Reels',    'slug'=>'insta-reel',            'url'=>$SITE_URL.'/insta-reel/',            'icon'=>'🎥','gruppe'=>'portrait','portrait'=>true],
-    ['title'=>'Cable-Park Portrait','slug'=>'park-portrait',         'url'=>$SITE_URL.'/park-portrait/',         'icon'=>'🌊','gruppe'=>'portrait','portrait'=>true],
+    ['title'=>'Starter Pack',       'slug'=>'starter-pack',          'full_slug'=>'starter-pack',          'url'=>$SITE_URL.'/starter-pack/',          'icon'=>'🏄','gruppe'=>'landscape','portrait'=>false,'sort_order'=>10],
+    ['title'=>'Wetter',             'slug'=>'wetter',                'full_slug'=>'wetter',                'url'=>$SITE_URL.'/wetter/',                'icon'=>'🌤','gruppe'=>'landscape','portrait'=>false,'sort_order'=>20],
+    ['title'=>'Wind Map',           'slug'=>'windmap',               'full_slug'=>'windmap',               'url'=>$SITE_URL.'/windmap/',               'icon'=>'💨','gruppe'=>'landscape','portrait'=>false,'sort_order'=>30],
+    ['title'=>'Tickets / Cable',    'slug'=>'tickets',               'full_slug'=>'tickets',               'url'=>$SITE_URL.'/tickets/',               'icon'=>'🏄','gruppe'=>'landscape','portrait'=>false,'sort_order'=>40],
+    ['title'=>'Kaffee',             'slug'=>'kaffee',                'full_slug'=>'kaffee',                'url'=>$SITE_URL.'/kaffee/',                'icon'=>'☕','gruppe'=>'landscape','portrait'=>false,'sort_order'=>50],
+    ['title'=>'Merchandise',        'slug'=>'merchandise',           'full_slug'=>'merchandise',           'url'=>$SITE_URL.'/merchandise/',           'icon'=>'👕','gruppe'=>'landscape','portrait'=>false,'sort_order'=>60],
+    ['title'=>'Stand Up Paddle',    'slug'=>'sup',                   'full_slug'=>'sup',                   'url'=>$SITE_URL.'/sup/',                   'icon'=>'🏄','gruppe'=>'landscape','portrait'=>false,'sort_order'=>70],
+    ['title'=>'Park',               'slug'=>'park',                  'full_slug'=>'park',                  'url'=>$SITE_URL.'/park/',                  'icon'=>'🌊','gruppe'=>'landscape','portrait'=>false,'sort_order'=>80],
+    ['title'=>'Obstacles',          'slug'=>'obstacles',             'full_slug'=>'obstacles',             'url'=>'https://wake-and-camp.de/obst/',    'icon'=>'🤸','gruppe'=>'landscape','portrait'=>false,'sort_order'=>90],
+    ['title'=>'Kino',               'slug'=>'kino',                  'full_slug'=>'kino',                  'url'=>$SITE_URL.'/kino/',                  'icon'=>'🎦','gruppe'=>'landscape','portrait'=>false,'sort_order'=>100],
+    ['title'=>'Cable Preisliste',   'slug'=>'cable-list',            'full_slug'=>'cable-list',            'url'=>$SITE_URL.'/cable-list/',            'icon'=>'🎫','gruppe'=>'liste',   'portrait'=>false,'sort_order'=>10],
+    ['title'=>'Camping Preise',     'slug'=>'camping-list',          'full_slug'=>'camping-list',          'url'=>$SITE_URL.'/camping-list/',          'icon'=>'⛺','gruppe'=>'liste',   'portrait'=>false,'sort_order'=>20],
+    ['title'=>'Eiskarte',           'slug'=>'eis',                   'full_slug'=>'eis',                   'url'=>$SITE_URL.'/eis/',                   'icon'=>'🍦','gruppe'=>'liste',   'portrait'=>false,'sort_order'=>30],
+    ['title'=>'Getränke',           'slug'=>'getraenke',             'full_slug'=>'getraenke',             'url'=>$SITE_URL.'/getraenke/',             'icon'=>'🍺','gruppe'=>'liste',   'portrait'=>false,'sort_order'=>40],
+    ['title'=>'Softdrinks',         'slug'=>'soft',                  'full_slug'=>'soft',                  'url'=>$SITE_URL.'/soft/',                  'icon'=>'🥤','gruppe'=>'liste',   'portrait'=>false,'sort_order'=>50],
+    ['title'=>'Speisekarte',        'slug'=>'essen',                 'full_slug'=>'essen',                 'url'=>$SITE_URL.'/essen/',                 'icon'=>'🍔','gruppe'=>'liste',   'portrait'=>false,'sort_order'=>60],
+    ['title'=>'Burger Table',       'slug'=>'produkt-table',         'full_slug'=>'produkt-table',         'url'=>$SITE_URL.'/produkt-table/',         'icon'=>'🍔','gruppe'=>'spotlight','portrait'=>false,'sort_order'=>10],
+    ['title'=>'Öffnungszeiten Story','slug'=>'oeffnungszeiten-story','full_slug'=>'oeffnungszeiten-story','url'=>$SITE_URL.'/oeffnungszeiten-story/','icon'=>'🕐','gruppe'=>'portrait','portrait'=>true, 'sort_order'=>10],
+    ['title'=>'Instagram Grid',     'slug'=>'insta',                 'full_slug'=>'insta',                 'url'=>$SITE_URL.'/insta/',                 'icon'=>'📸','gruppe'=>'portrait','portrait'=>true, 'sort_order'=>20],
+    ['title'=>'Instagram Reels',    'slug'=>'insta-reel',            'full_slug'=>'insta-reel',            'url'=>$SITE_URL.'/insta-reel/',            'icon'=>'🎥','gruppe'=>'portrait','portrait'=>true, 'sort_order'=>30],
+    ['title'=>'Cable-Park Portrait','slug'=>'park-portrait',         'full_slug'=>'park-portrait',         'url'=>$SITE_URL.'/park-portrait/',         'icon'=>'🌊','gruppe'=>'portrait','portrait'=>true, 'sort_order'=>40],
 ];
 
 $raw_seiten = !empty($wp_seiten) ? $wp_seiten : $fallback_seiten;
@@ -139,6 +163,17 @@ foreach ($raw_seiten as $s) {
     if (!isset($gruppen[$gkey])) $gkey = 'landscape';
     $gruppen[$gkey]['seiten'][] = $s;
 }
+
+// Innerhalb jeder Gruppe nach sort_order sortieren
+foreach ($gruppen as &$g) {
+    usort($g['seiten'], function($a, $b) {
+        $ao = isset($a['sort_order']) ? $a['sort_order'] : 9999;
+        $bo = isset($b['sort_order']) ? $b['sort_order'] : 9999;
+        return $ao - $bo;
+    });
+}
+unset($g);
+
 $gruppen = array_filter($gruppen, function($g){ return !empty($g['seiten']); });
 
 function wcr_ds_check_status(array $rule, PDO $pdo, array $allowed_tables): array {
@@ -246,6 +281,7 @@ $ds_count = count($alle_seiten);
     .ds-card.ds-inactive{opacity:.7;border-color:#fca5a5;}
     .ds-card-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #e5e7eb;background:#f9fafb;gap:8px;flex-wrap:wrap;}
     .ds-card-title{display:flex;align-items:center;gap:7px;font-size:.88rem;font-weight:700;color:#111;min-width:0;}
+    .ds-sort-badge{font-size:.6rem;font-weight:700;background:#e0e7ff;color:#3730a3;border-radius:4px;padding:1px 5px;letter-spacing:.5px;flex-shrink:0;}
     .ds-card-actions{display:flex;align-items:center;gap:5px;flex-shrink:0;}
     .ds-badge{display:inline-flex;align-items:center;gap:4px;font-size:.65rem;font-weight:600;padding:2px 8px;border-radius:20px;border:1px solid transparent;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;}
     .ds-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0;animation:ds-blink 2s infinite;}
@@ -309,7 +345,7 @@ $ds_count = count($alle_seiten);
   <?php else: ?>
     ⚠️ <strong>REST API erreichbar</strong> (<?= (int)$api_total ?> Seiten total)
     — keine Seite hat Slug-Prefix <code>ds-</code>.<br>
-    WP Admin → Seite bearbeiten → Permalink → Slug auf <code>ds-seitenname</code> setzen.
+    WP Admin → Seite bearbeiten → Permalink → Slug auf <code>ds-10-seitenname</code> setzen (Zahl = Sortierreihenfolge).
   <?php endif; ?>
 </div>
 <?php endif; ?>
@@ -338,10 +374,14 @@ $ds_count = count($alle_seiten);
       $effektiv = ($ov === 'force_on') ? true : (($ov === 'force_off') ? false : $status['active']);
       $bc       = $effektiv ? '#00c853' : '#ff3b30';
       $bt       = $effektiv ? 'Aktiv' : 'Inaktiv';
+      $so       = isset($s['sort_order']) ? (int)$s['sort_order'] : 9999;
     ?>
     <div class="ds-card <?= !$effektiv ? 'ds-inactive' : '' ?>" id="ds-card-<?= $i ?>">
       <div class="ds-card-header">
         <div class="ds-card-title">
+          <?php if ($so < 9999): ?>
+          <span class="ds-sort-badge">#<?= $so ?></span>
+          <?php endif; ?>
           <span><?= htmlspecialchars($s['icon'], ENT_QUOTES, 'UTF-8') ?></span>
           <span><?= htmlspecialchars($s['title'], ENT_QUOTES, 'UTF-8') ?></span>
         </div>
