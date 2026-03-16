@@ -1,271 +1,192 @@
 <?php
 /**
  * ctrl/ds-seiten.php — DS-Seiten Vorschau + Aktivierungssteuerung
- * v5.3: Settings-Button öffnet ds-sync.php in iFrame-Overlay
+ * v5.4: Suffix-Manager raus (→ Popup), Settings-Button öffnet ds-sync.php?popup=1
  */
 require_once __DIR__ . '/../inc/auth.php';
 require_once __DIR__ . '/../inc/db.php';
 
 wcr_require('view_ds');
 
-$PAGE_TITLE    = 'DS-Seiten – Vorschau & Steuerung';
-$DS_SLUG_PRE   = 'ds-';
-$SITE_URL      = 'https://wcr-webpage.de';
-$WP_API_BASE   = $SITE_URL . '/wp-json/wp/v2';
+$PAGE_TITLE     = 'DS-Seiten – Vorschau & Steuerung';
+$DS_SLUG_PRE    = 'ds-';
+$SITE_URL       = 'https://wcr-webpage.de';
+$WP_API_BASE    = $SITE_URL . '/wp-json/wp/v2';
 $ALLOWED_TABLES = ['food','drinks','cable','camping','extra','ice'];
-$RULES_FILE    = __DIR__ . '/../inc/ds-rules.json';
-$SUFFIX_FILE   = __DIR__ . '/../inc/ds-suffixes.json';
+$RULES_FILE     = __DIR__ . '/../inc/ds-rules.json';
+$SUFFIX_FILE    = __DIR__ . '/../inc/ds-suffixes.json';
 
 function wcr_ds_load_suffixes(string $file): array {
     $defaults = [
         'suffixes' => [
-            'landscape' => ['label'=>'🖼️ 16:9 — Landscape', 'portrait'=>false,'w'=>1920,'h'=>1080],
-            'list'      => ['label'=>'📋 Listen',             'portrait'=>false,'w'=>1920,'h'=>1080],
-            'highlight' => ['label'=>'✨ Highlight',          'portrait'=>false,'w'=>1920,'h'=>1080],
-            'portrait'  => ['label'=>'📱 9:16 — Portrait',    'portrait'=>true, 'w'=>1080,'h'=>1920],
+            'landscape' => ['label'=>'🖼️ 16:9 — Landscape','portrait'=>false,'w'=>1920,'h'=>1080],
+            'list'      => ['label'=>'📋 Listen',           'portrait'=>false,'w'=>1920,'h'=>1080],
+            'highlight' => ['label'=>'✨ Highlight',        'portrait'=>false,'w'=>1920,'h'=>1080],
+            'portrait'  => ['label'=>'📱 9:16 — Portrait',  'portrait'=>true, 'w'=>1080,'h'=>1920],
         ],
         'default' => 'landscape',
     ];
     if (!file_exists($file)) return $defaults;
     $raw = json_decode(file_get_contents($file), true);
-    if (!is_array($raw) || empty($raw['suffixes'])) return $defaults;
-    return $raw;
+    return (is_array($raw) && !empty($raw['suffixes'])) ? $raw : $defaults;
 }
-
 function wcr_ds_load_rules(string $file): array {
     if (!file_exists($file)) return [];
     $raw = json_decode(file_get_contents($file), true);
     return is_array($raw) ? $raw : [];
 }
 function wcr_ds_save_rules(string $file, array $rules): void {
-    file_put_contents($file, json_encode($rules, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+    file_put_contents($file, json_encode($rules, JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE), LOCK_EX);
 }
 
-$suffix_config = wcr_ds_load_suffixes($SUFFIX_FILE);
-$SUFFIX_MAP    = $suffix_config['suffixes'];
-$DEFAULT_SUFFIX = isset($suffix_config['default']) ? $suffix_config['default'] : 'landscape';
-$rules         = wcr_ds_load_rules($RULES_FILE);
+$suffix_config  = wcr_ds_load_suffixes($SUFFIX_FILE);
+$SUFFIX_MAP     = $suffix_config['suffixes'];
+$DEFAULT_SUFFIX = $suffix_config['default'] ?? 'landscape';
+$rules          = wcr_ds_load_rules($RULES_FILE);
 
 function wcr_ds_parse_slug_suffix(string $after, array $suffix_map, string $default): array {
     $parts = explode('-', $after);
     $last  = strtolower(end($parts));
-    if (count($parts) > 1 && isset($suffix_map[$last])) {
-        $suffix = $last;
-        array_pop($parts);
-        $slug = implode('-', $parts);
+    if (count($parts)>1 && isset($suffix_map[$last])) {
+        $suffix=$last; array_pop($parts); $slug=implode('-',$parts);
     } else {
-        $suffix = $default;
-        $slug   = $after;
+        $suffix=$default; $slug=$after;
     }
-    return ['slug' => $slug, 'suffix' => $suffix];
+    return ['slug'=>$slug,'suffix'=>$suffix];
 }
 
-function wcr_ds_load_wp_pages_api(
-    string $api_base, string $slug_pre, string $site_url,
-    array $suffix_map, string $default_suffix
-): array {
-    $url = $api_base . '/pages?per_page=100&status=publish&orderby=menu_order&order=asc&_fields=id,slug,title,menu_order';
-    $ctx = stream_context_create(['http'=>['timeout'=>5,'ignore_errors'=>true,'header'=>"Accept: application/json\r\n"]]);
-    $raw = @file_get_contents($url, false, $ctx);
-    if ($raw === false)
-        return ['pages'=>[],'error'=>'HTTP-Anfrage fehlgeschlagen (allow_url_fopen?)'];
-    $http_code = 0;
-    if (!empty($http_response_header)) {
-        preg_match('/HTTP\/\S+\s+(\d+)/', $http_response_header[0], $m);
-        $http_code = (int)($m[1] ?? 0);
-    }
-    if ($http_code !== 200)
-        return ['pages'=>[],'error'=>'REST API HTTP '.$http_code,'raw'=>substr($raw,0,300)];
-    $data = json_decode($raw, true);
-    if (!is_array($data))
-        return ['pages'=>[],'error'=>'JSON-Decode fehlgeschlagen'];
-    $result = [];
+function wcr_ds_load_wp_pages_api(string $api_base,string $slug_pre,string $site_url,array $suffix_map,string $default_suffix): array {
+    $url=$api_base.'/pages?per_page=100&status=publish&orderby=menu_order&order=asc&_fields=id,slug,title,menu_order';
+    $ctx=stream_context_create(['http'=>['timeout'=>5,'ignore_errors'=>true,'header'=>"Accept: application/json\r\n"]]);
+    $raw=@file_get_contents($url,false,$ctx);
+    if ($raw===false) return ['pages'=>[],'error'=>'HTTP-Anfrage fehlgeschlagen'];
+    $http_code=0;
+    if (!empty($http_response_header)) { preg_match('/HTTP\/\S+\s+(\d+)/',$http_response_header[0],$m); $http_code=(int)($m[1]??0); }
+    if ($http_code!==200) return ['pages'=>[],'error'=>'REST API HTTP '.$http_code,'raw'=>substr($raw,0,300)];
+    $data=json_decode($raw,true);
+    if (!is_array($data)) return ['pages'=>[],'error'=>'JSON-Decode fehlgeschlagen'];
+    $result=[];
     foreach ($data as $p) {
-        $full_slug = isset($p['slug']) ? $p['slug'] : '';
-        if (strpos($full_slug, $slug_pre) !== 0) continue;
-        $after  = substr($full_slug, strlen($slug_pre));
-        $parsed = wcr_ds_parse_slug_suffix($after, $suffix_map, $default_suffix);
-        $slug   = $parsed['slug'];
-        $suffix = $parsed['suffix'];
-        if (!isset($suffix_map[$suffix]))
-            $suffix_map[$suffix] = ['label'=>'📄 '.ucfirst($suffix),'portrait'=>false,'w'=>1920,'h'=>1080];
-        $title = isset($p['title']['rendered']) ? $p['title']['rendered'] : $full_slug;
-        $title = strip_tags(html_entity_decode($title, ENT_QUOTES, 'UTF-8'));
-        $order = isset($p['menu_order']) ? (int)$p['menu_order'] : 9999;
-        $result[] = [
-            'title'      => $title,
-            'slug'       => $slug,
-            'full_slug'  => $full_slug,
-            'url'        => rtrim($site_url,'/') . '/' . $full_slug . '/',
-            'icon'       => '📄',
-            'suffix'     => $suffix,
-            'sort_order' => $order,
-            'wp_id'      => isset($p['id']) ? (int)$p['id'] : 0,
-        ];
+        $full_slug=$p['slug']??'';
+        if (strpos($full_slug,$slug_pre)!==0) continue;
+        $after=substr($full_slug,strlen($slug_pre));
+        $parsed=wcr_ds_parse_slug_suffix($after,$suffix_map,$default_suffix);
+        $slug=$parsed['slug']; $suffix=$parsed['suffix'];
+        if (!isset($suffix_map[$suffix])) $suffix_map[$suffix]=['label'=>'📄 '.ucfirst($suffix),'portrait'=>false,'w'=>1920,'h'=>1080];
+        $title=strip_tags(html_entity_decode($p['title']['rendered']??$full_slug,ENT_QUOTES,'UTF-8'));
+        $result[]=['title'=>$title,'slug'=>$slug,'full_slug'=>$full_slug,
+            'url'=>rtrim($site_url,'/').'/'.  $full_slug.'/','icon'=>'📄',
+            'suffix'=>$suffix,'sort_order'=>(int)($p['menu_order']??9999),'wp_id'=>(int)($p['id']??0)];
     }
-    usort($result, function($a,$b){ return $a['sort_order'] - $b['sort_order']; });
-    return ['pages'=>$result, 'total_wp'=>count($data), 'suffix_map'=>$suffix_map];
+    usort($result,fn($a,$b)=>$a['sort_order']-$b['sort_order']);
+    return ['pages'=>$result,'total_wp'=>count($data),'suffix_map'=>$suffix_map];
 }
 
-$api_result   = wcr_ds_load_wp_pages_api($WP_API_BASE, $DS_SLUG_PRE, $SITE_URL, $SUFFIX_MAP, $DEFAULT_SUFFIX);
-$wp_seiten    = $api_result['pages'];
-$api_error    = isset($api_result['error'])    ? $api_result['error']    : null;
-$api_total    = isset($api_result['total_wp']) ? $api_result['total_wp'] : null;
-if (!empty($api_result['suffix_map'])) $SUFFIX_MAP = $api_result['suffix_map'];
+$api_result  = wcr_ds_load_wp_pages_api($WP_API_BASE,$DS_SLUG_PRE,$SITE_URL,$SUFFIX_MAP,$DEFAULT_SUFFIX);
+$wp_seiten   = $api_result['pages'];
+$api_error   = $api_result['error']??null;
+$api_total   = $api_result['total_wp']??null;
+if (!empty($api_result['suffix_map'])) $SUFFIX_MAP=$api_result['suffix_map'];
 
 $fallback_seiten = [
-    ['title'=>'Starter Pack',     'slug'=>'starter-pack',    'full_slug'=>'ds-starter-pack-landscape',   'url'=>$SITE_URL.'/ds-starter-pack-landscape/',   'icon'=>'🏄','suffix'=>'landscape','sort_order'=>10],
-    ['title'=>'Wetter',           'slug'=>'wetter',          'full_slug'=>'ds-wetter-landscape',         'url'=>$SITE_URL.'/ds-wetter-landscape/',         'icon'=>'🌤','suffix'=>'landscape','sort_order'=>20],
-    ['title'=>'Wind Map',         'slug'=>'windmap',         'full_slug'=>'ds-windmap-landscape',        'url'=>$SITE_URL.'/ds-windmap-landscape/',        'icon'=>'💨','suffix'=>'landscape','sort_order'=>30],
-    ['title'=>'Tickets / Cable',  'slug'=>'tickets',         'full_slug'=>'ds-tickets-landscape',        'url'=>$SITE_URL.'/ds-tickets-landscape/',        'icon'=>'🏄','suffix'=>'landscape','sort_order'=>40],
-    ['title'=>'Park',             'slug'=>'park',            'full_slug'=>'ds-park-landscape',           'url'=>$SITE_URL.'/ds-park-landscape/',           'icon'=>'🌊','suffix'=>'landscape','sort_order'=>50],
-    ['title'=>'Kino',             'slug'=>'kino',            'full_slug'=>'ds-kino-landscape',           'url'=>$SITE_URL.'/ds-kino-landscape/',           'icon'=>'🎦','suffix'=>'landscape','sort_order'=>60],
-    ['title'=>'Cable Preisliste', 'slug'=>'cable',           'full_slug'=>'ds-cable-list',               'url'=>$SITE_URL.'/ds-cable-list/',               'icon'=>'🎫','suffix'=>'list',     'sort_order'=>10],
-    ['title'=>'Eiskarte',         'slug'=>'eis',             'full_slug'=>'ds-eis-list',                 'url'=>$SITE_URL.'/ds-eis-list/',                 'icon'=>'🍦','suffix'=>'list',     'sort_order'=>20],
-    ['title'=>'Getränke',         'slug'=>'getraenke',       'full_slug'=>'ds-getraenke-list',           'url'=>$SITE_URL.'/ds-getraenke-list/',           'icon'=>'🍺','suffix'=>'list',     'sort_order'=>30],
-    ['title'=>'Speisekarte',      'slug'=>'essen',           'full_slug'=>'ds-essen-list',               'url'=>$SITE_URL.'/ds-essen-list/',               'icon'=>'🍔','suffix'=>'list',     'sort_order'=>40],
-    ['title'=>'Burger Highlight', 'slug'=>'burger',          'full_slug'=>'ds-burger-highlight',         'url'=>$SITE_URL.'/ds-burger-highlight/',         'icon'=>'🍔','suffix'=>'highlight','sort_order'=>10],
-    ['title'=>'Öffnungszeiten',   'slug'=>'oeffnungszeiten','full_slug'=>'ds-oeffnungszeiten-portrait', 'url'=>$SITE_URL.'/ds-oeffnungszeiten-portrait/', 'icon'=>'🕐','suffix'=>'portrait', 'sort_order'=>10],
-    ['title'=>'Instagram Grid',   'slug'=>'insta',           'full_slug'=>'ds-insta-portrait',           'url'=>$SITE_URL.'/ds-insta-portrait/',           'icon'=>'📸','suffix'=>'portrait', 'sort_order'=>20],
-    ['title'=>'Instagram Reels',  'slug'=>'insta-reel',      'full_slug'=>'ds-insta-reel-portrait',      'url'=>$SITE_URL.'/ds-insta-reel-portrait/',      'icon'=>'🎥','suffix'=>'portrait', 'sort_order'=>30],
+    ['title'=>'Starter Pack',    'slug'=>'starter-pack',   'full_slug'=>'ds-starter-pack-landscape',  'url'=>$SITE_URL.'/ds-starter-pack-landscape/',  'icon'=>'🏄','suffix'=>'landscape','sort_order'=>10],
+    ['title'=>'Wetter',          'slug'=>'wetter',         'full_slug'=>'ds-wetter-landscape',        'url'=>$SITE_URL.'/ds-wetter-landscape/',        'icon'=>'🌤','suffix'=>'landscape','sort_order'=>20],
+    ['title'=>'Wind Map',        'slug'=>'windmap',        'full_slug'=>'ds-windmap-landscape',       'url'=>$SITE_URL.'/ds-windmap-landscape/',       'icon'=>'💨','suffix'=>'landscape','sort_order'=>30],
+    ['title'=>'Tickets / Cable', 'slug'=>'tickets',        'full_slug'=>'ds-tickets-landscape',       'url'=>$SITE_URL.'/ds-tickets-landscape/',       'icon'=>'🏄','suffix'=>'landscape','sort_order'=>40],
+    ['title'=>'Park',            'slug'=>'park',           'full_slug'=>'ds-park-landscape',          'url'=>$SITE_URL.'/ds-park-landscape/',          'icon'=>'🌊','suffix'=>'landscape','sort_order'=>50],
+    ['title'=>'Kino',            'slug'=>'kino',           'full_slug'=>'ds-kino-landscape',          'url'=>$SITE_URL.'/ds-kino-landscape/',          'icon'=>'🎦','suffix'=>'landscape','sort_order'=>60],
+    ['title'=>'Cable Preisliste','slug'=>'cable',          'full_slug'=>'ds-cable-list',              'url'=>$SITE_URL.'/ds-cable-list/',              'icon'=>'🎫','suffix'=>'list',     'sort_order'=>10],
+    ['title'=>'Eiskarte',        'slug'=>'eis',            'full_slug'=>'ds-eis-list',                'url'=>$SITE_URL.'/ds-eis-list/',                'icon'=>'🍦','suffix'=>'list',     'sort_order'=>20],
+    ['title'=>'Getränke',        'slug'=>'getraenke',      'full_slug'=>'ds-getraenke-list',          'url'=>$SITE_URL.'/ds-getraenke-list/',          'icon'=>'🍺','suffix'=>'list',     'sort_order'=>30],
+    ['title'=>'Speisekarte',     'slug'=>'essen',          'full_slug'=>'ds-essen-list',              'url'=>$SITE_URL.'/ds-essen-list/',              'icon'=>'🍔','suffix'=>'list',     'sort_order'=>40],
+    ['title'=>'Burger Highlight','slug'=>'burger',         'full_slug'=>'ds-burger-highlight',        'url'=>$SITE_URL.'/ds-burger-highlight/',        'icon'=>'🍔','suffix'=>'highlight','sort_order'=>10],
+    ['title'=>'Öffnungszeiten',  'slug'=>'oeffnungszeiten','full_slug'=>'ds-oeffnungszeiten-portrait','url'=>$SITE_URL.'/ds-oeffnungszeiten-portrait/','icon'=>'🕐','suffix'=>'portrait', 'sort_order'=>10],
+    ['title'=>'Instagram Grid',  'slug'=>'insta',          'full_slug'=>'ds-insta-portrait',          'url'=>$SITE_URL.'/ds-insta-portrait/',          'icon'=>'📸','suffix'=>'portrait', 'sort_order'=>20],
+    ['title'=>'Instagram Reels', 'slug'=>'insta-reel',     'full_slug'=>'ds-insta-reel-portrait',     'url'=>$SITE_URL.'/ds-insta-reel-portrait/',     'icon'=>'🎥','suffix'=>'portrait', 'sort_order'=>30],
 ];
 
-$raw_seiten = !empty($wp_seiten) ? $wp_seiten : $fallback_seiten;
-$using_wp   = !empty($wp_seiten);
+$raw_seiten=$using_wp=!empty($wp_seiten)?$wp_seiten:$fallback_seiten;
+$using_wp=!empty($wp_seiten);
+$raw_seiten=!empty($wp_seiten)?$wp_seiten:$fallback_seiten;
 
-$gruppen = [];
+$gruppen=[];
 foreach ($raw_seiten as $s) {
-    $sfx = isset($s['suffix']) ? $s['suffix'] : $DEFAULT_SUFFIX;
-    if (!isset($SUFFIX_MAP[$sfx])) $sfx = $DEFAULT_SUFFIX;
-    $cfg = $SUFFIX_MAP[$sfx];
-    if (!isset($gruppen[$sfx])) {
-        $gruppen[$sfx] = [
-            'label'    => $cfg['label'],
-            'portrait' => (bool)($cfg['portrait'] ?? false),
-            'w'        => (int)($cfg['w']  ?? 1920),
-            'h'        => (int)($cfg['h']  ?? 1080),
-            'seiten'   => [],
-        ];
-    }
-    $gruppen[$sfx]['seiten'][] = $s;
+    $sfx=$s['suffix']??$DEFAULT_SUFFIX;
+    if (!isset($SUFFIX_MAP[$sfx])) $sfx=$DEFAULT_SUFFIX;
+    $cfg=$SUFFIX_MAP[$sfx];
+    if (!isset($gruppen[$sfx]))
+        $gruppen[$sfx]=['label'=>$cfg['label'],'portrait'=>(bool)($cfg['portrait']??false),'w'=>(int)($cfg['w']??1920),'h'=>(int)($cfg['h']??1080),'seiten'=>[]];
+    $gruppen[$sfx]['seiten'][]=$s;
 }
-foreach ($gruppen as &$g) {
-    usort($g['seiten'], function($a,$b){
-        return ($a['sort_order']??9999) - ($b['sort_order']??9999);
-    });
-}
+foreach ($gruppen as &$g) usort($g['seiten'],fn($a,$b)=>($a['sort_order']??9999)-($b['sort_order']??9999));
 unset($g);
-$ordered_gruppen = [];
-foreach (array_keys($SUFFIX_MAP) as $sfx) {
-    if (isset($gruppen[$sfx])) $ordered_gruppen[$sfx] = $gruppen[$sfx];
-}
-foreach ($gruppen as $sfx => $g) {
-    if (!isset($ordered_gruppen[$sfx])) $ordered_gruppen[$sfx] = $g;
-}
-$gruppen = $ordered_gruppen;
+$ordered=[];
+foreach (array_keys($SUFFIX_MAP) as $sfx) if(isset($gruppen[$sfx])) $ordered[$sfx]=$gruppen[$sfx];
+foreach ($gruppen as $sfx=>$g) if(!isset($ordered[$sfx])) $ordered[$sfx]=$g;
+$gruppen=$ordered;
 
-function wcr_ds_check_status(array $rule, PDO $pdo, array $allowed_tables): array {
-    $tables  = array_values(array_intersect((array)($rule['tables'] ?? []), $allowed_tables));
-    $typ     = trim($rule['typ'] ?? '');
-    $ids_raw = trim($rule['ids'] ?? '');
-    $mode    = ($rule['mode'] ?? 'any') === 'all' ? 'all' : 'any';
-    if (empty($tables) && $typ === '' && $ids_raw === '')
-        return ['active'=>true,'reason'=>'no_rule','db_ok'=>true];
-    $check_tables = !empty($tables) ? $tables : $allowed_tables;
+function wcr_ds_check_status(array $rule,PDO $pdo,array $allowed_tables): array {
+    $tables=array_values(array_intersect((array)($rule['tables']??[]),$allowed_tables));
+    $typ=trim($rule['typ']??''); $ids_raw=trim($rule['ids']??'');
+    $mode=($rule['mode']??'any')==='all'?'all':'any';
+    if (empty($tables)&&$typ===''&&$ids_raw==='') return ['active'=>true,'reason'=>'no_rule','db_ok'=>true];
+    $check_tables=!empty($tables)?$tables:$allowed_tables;
     try {
-        if ($ids_raw !== '') {
-            $ids = array_filter(array_map('intval', explode(',', $ids_raw)));
+        if ($ids_raw!=='') {
+            $ids=array_filter(array_map('intval',explode(',',$ids_raw)));
             if (empty($ids)) return ['active'=>true,'reason'=>'ids_empty','db_ok'=>true];
             $found=0; $total=count($ids);
-            foreach ($ids as $id) {
-                foreach ($check_tables as $tbl) {
-                    $stmt=$pdo->prepare("SELECT stock FROM `{$tbl}` WHERE nummer=? LIMIT 1");
-                    $stmt->execute([$id]);
-                    $val=$stmt->fetchColumn();
-                    if ($val!==false && (int)$val>0){$found++;break;}
-                }
+            foreach ($ids as $id) foreach ($check_tables as $tbl) {
+                $stmt=$pdo->prepare("SELECT stock FROM `{$tbl}` WHERE nummer=? LIMIT 1");
+                $stmt->execute([$id]); $val=$stmt->fetchColumn();
+                if ($val!==false&&(int)$val>0){$found++;break;}
             }
-            $active=($mode==='all')?($found===$total):($found>0);
-            return ['active'=>$active,'reason'=>'ids_'.$mode.':'.$found.'/'.$total,'db_ok'=>true];
+            return ['active'=>$mode==='all'?$found===$total:$found>0,'reason'=>'ids_'.$mode.':'.$found.'/'.$total,'db_ok'=>true];
         }
-        if ($typ !== '') {
+        if ($typ!=='') {
             foreach ($check_tables as $tbl) {
                 $stmt=$pdo->prepare("SELECT COUNT(*) FROM `{$tbl}` WHERE typ=? AND stock>0");
                 $stmt->execute([$typ]);
-                if ((int)$stmt->fetchColumn()>0)
-                    return ['active'=>true,'reason'=>'typ_active:'.$tbl.':'.$typ,'db_ok'=>true];
+                if ((int)$stmt->fetchColumn()>0) return ['active'=>true,'reason'=>'typ_active:'.$tbl.':'.$typ,'db_ok'=>true];
             }
             return ['active'=>false,'reason'=>'typ_none_active:'.$typ,'db_ok'=>true];
         }
         foreach ($check_tables as $tbl) {
             $stmt=$pdo->query("SELECT COUNT(*) FROM `{$tbl}` WHERE stock>0");
-            if ((int)$stmt->fetchColumn()>0)
-                return ['active'=>true,'reason'=>'table_any:'.$tbl,'db_ok'=>true];
+            if ((int)$stmt->fetchColumn()>0) return ['active'=>true,'reason'=>'table_any:'.$tbl,'db_ok'=>true];
         }
         return ['active'=>false,'reason'=>'table_none_active','db_ok'=>true];
-    } catch (Exception $e) {
-        return ['active'=>true,'reason'=>'db_error_fail_open','db_ok'=>false];
-    }
+    } catch (Exception $e) { return ['active'=>true,'reason'=>'db_error_fail_open','db_ok'=>false]; }
 }
 
-$alle_seiten = [];
-foreach ($gruppen as &$g) {
-    foreach ($g['seiten'] as &$s) {
-        $s['_idx'] = count($alle_seiten);
-        $rule = isset($rules[$s['slug']]) ? $rules[$s['slug']] : ['override'=>'auto','tables'=>[],'typ'=>'','ids'=>'','mode'=>'any'];
-        $s['rule']   = $rule;
-        $s['status'] = wcr_ds_check_status($rule, $pdo, $ALLOWED_TABLES);
-        $alle_seiten[] = &$s;
-    }
+$alle_seiten=[];
+foreach ($gruppen as &$g) foreach ($g['seiten'] as &$s) {
+    $s['_idx']=count($alle_seiten);
+    $rule=$rules[$s['slug']]??['override'=>'auto','tables'=>[],'typ'=>'','ids'=>'','mode'=>'any'];
+    $s['rule']=$rule;
+    $s['status']=wcr_ds_check_status($rule,$pdo,$ALLOWED_TABLES);
+    $alle_seiten[]=&$s;
 }
 unset($g,$s);
 
-$save_msg = '';
-if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['wcr_ds_save'])) {
-    wcr_require('view_ds');
-    wcr_verify_csrf();
-    $slug = preg_replace('/[^a-z0-9_\-]/','',strtolower($_POST['page_slug']??''));
+$save_msg='';
+if ($_SERVER['REQUEST_METHOD']==='POST'&&isset($_POST['wcr_ds_save'])) {
+    wcr_require('view_ds'); wcr_verify_csrf();
+    $slug=preg_replace('/[^a-z0-9_\-]/','',strtolower($_POST['page_slug']??''));
     if ($slug!=='') {
-        $rules[$slug] = [
-            'override' => in_array($_POST['override']??'auto',['auto','force_on','force_off'])?$_POST['override']:'auto',
-            'tables'   => array_values(array_intersect((array)($_POST['tables']??[]),$ALLOWED_TABLES)),
-            'typ'      => trim(strip_tags($_POST['typ']??'')),
-            'ids'      => trim(preg_replace('/[^0-9,]/','',  $_POST['ids']??'')),
-            'mode'     => in_array($_POST['mode']??'any',['any','all'])?$_POST['mode']:'any',
-        ];
+        $rules[$slug]=['override'=>in_array($_POST['override']??'auto',['auto','force_on','force_off'])?$_POST['override']:'auto',
+            'tables'=>array_values(array_intersect((array)($_POST['tables']??[]),$ALLOWED_TABLES)),
+            'typ'=>trim(strip_tags($_POST['typ']??'')),'ids'=>trim(preg_replace('/[^0-9,]/','',  $_POST['ids']??'')),
+            'mode'=>in_array($_POST['mode']??'any',['any','all'])?$_POST['mode']:'any'];
         wcr_ds_save_rules($RULES_FILE,$rules);
-        $save_msg = '✅ Gespeichert für: '.htmlspecialchars($slug,ENT_QUOTES,'UTF-8');
+        $save_msg='✅ Gespeichert für: '.htmlspecialchars($slug,ENT_QUOTES,'UTF-8');
     }
 }
 
-$suffix_save_msg = '';
-if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['wcr_suffix_save'])) {
-    wcr_require('view_ds');
-    wcr_verify_csrf();
-    $new_key   = preg_replace('/[^a-z0-9_\-]/','',strtolower($_POST['suffix_key']??''));
-    $new_label = trim(strip_tags($_POST['suffix_label']??''));
-    $new_port  = isset($_POST['suffix_portrait']) ? true : false;
-    $new_w     = in_array((int)($_POST['suffix_w']??1920),[1920,1080])?(int)$_POST['suffix_w']:1920;
-    $new_h     = in_array((int)($_POST['suffix_h']??1080),[1080,1920])?(int)$_POST['suffix_h']:1080;
-    if ($new_key!=='' && $new_label!=='') {
-        $suffix_config['suffixes'][$new_key] = [
-            'label'   => $new_label,
-            'portrait'=> $new_port,
-            'w'       => $new_w,
-            'h'       => $new_h,
-        ];
-        file_put_contents($SUFFIX_FILE, json_encode($suffix_config, JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE), LOCK_EX);
-        $SUFFIX_MAP = $suffix_config['suffixes'];
-        $suffix_save_msg = '✅ Suffix <code>'.$new_key.'</code> gespeichert!';
-    }
-}
-
-$typen_all = [];
+$typen_all=[];
 foreach ($ALLOWED_TABLES as $tbl) {
-    try {
-        $rows=$pdo->query("SELECT DISTINCT typ FROM `{$tbl}` WHERE typ IS NOT NULL AND typ!='' ORDER BY typ")->fetchAll(PDO::FETCH_COLUMN);
-        foreach ($rows as $t) $typen_all[]=trim($t);
-    } catch(Exception $e){}
+    try { $rows=$pdo->query("SELECT DISTINCT typ FROM `{$tbl}` WHERE typ IS NOT NULL AND typ!='' ORDER BY typ")->fetchAll(PDO::FETCH_COLUMN);
+        foreach ($rows as $t) $typen_all[]=trim($t); } catch(Exception $e){}
 }
 $typen_all=array_unique($typen_all); sort($typen_all);
 $ds_count=count($alle_seiten);
@@ -276,7 +197,7 @@ $ds_count=count($alle_seiten);
 <meta charset="UTF-8">
 <title>Verwaltung: <?= htmlspecialchars($PAGE_TITLE,ENT_QUOTES,'UTF-8') ?></title>
 <style>
-/* ── Sync-Popup ─────────────────────────────────────────────────────────── */
+/* ── Sync-Popup ─────────────────────────────────────────────────────────────── */
 #sync-overlay{
   display:none;position:fixed;inset:0;z-index:9999;
   background:rgba(0,0,0,.55);backdrop-filter:blur(3px);
@@ -294,35 +215,16 @@ $ds_count=count($alle_seiten);
   padding:12px 18px;border-bottom:1px solid #e5e7eb;background:#f9fafb;flex-shrink:0;
 }
 #sync-popup-header h2{margin:0;font-size:.92rem;font-weight:700;display:flex;align-items:center;gap:7px;}
-#sync-popup-close{
-  background:none;border:none;font-size:1.25rem;cursor:pointer;
-  color:#6b7280;padding:4px 8px;border-radius:6px;line-height:1;
-}
+#sync-popup-close{background:none;border:none;font-size:1.25rem;cursor:pointer;color:#6b7280;padding:4px 8px;border-radius:6px;line-height:1;}
 #sync-popup-close:hover{background:#f3f4f6;color:#111;}
-#sync-iframe{
-  flex:1;border:none;width:100%;display:block;
-}
-/* ── Settings Button ───────────────────────────────────────────────────── */
-.settings-btn{
-  display:inline-flex;align-items:center;gap:6px;
-  background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px;
-  color:#374151;font-size:.85rem;font-weight:600;
-  padding:6px 14px;cursor:pointer;transition:background .15s;
-}
+#sync-iframe{flex:1;border:none;width:100%;display:block;}
+/* ── Settings Button ─────────────────────────────────────────────────────────  */
+.settings-btn{display:inline-flex;align-items:center;gap:6px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px;color:#374151;font-size:.85rem;font-weight:600;padding:6px 14px;cursor:pointer;transition:background .15s;}
 .settings-btn:hover{background:#e5e7eb;}
-/* ── Rest (unverändert) ─────────────────────────────────────────────────── */
+/* ── Rest ───────────────────────────────────────────────────────────────────── */
 .ds-source-badge{display:inline-flex;align-items:center;gap:5px;font-size:.72rem;font-weight:600;padding:3px 10px;border-radius:20px;margin-left:8px;}
 .ds-source-badge.wp{background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;}
 .ds-source-badge.fb{background:#fff3e0;color:#e65100;border:1px solid #ffcc80;}
-.ds-suffix-manager{background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:16px 20px;margin-bottom:28px;}
-.ds-suffix-manager h3{font-size:.85rem;font-weight:700;color:#374151;margin:0 0 12px;display:flex;align-items:center;gap:6px;}
-.ds-suffix-list{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;}
-.ds-suffix-chip{display:inline-flex;align-items:center;gap:5px;background:#fff;border:1px solid #d1d5db;border-radius:8px;padding:4px 10px;font-size:.75rem;font-weight:600;color:#374151;}
-.ds-suffix-chip code{background:#e0e7ff;color:#3730a3;border-radius:4px;padding:1px 5px;font-size:.7rem;}
-.ds-suffix-add{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;border-top:1px dashed #e5e7eb;padding-top:12px;}
-.ds-suffix-add label{font-size:.75rem;font-weight:600;color:#374151;display:flex;flex-direction:column;gap:3px;}
-.ds-suffix-add input[type=text],.ds-suffix-add select{border:1px solid #d1d5db;border-radius:6px;padding:4px 8px;font-size:.8rem;min-width:120px;}
-.ds-suffix-add-btn{background:#0071e3;color:#fff;border:none;border-radius:8px;padding:6px 16px;font-size:.8rem;font-weight:600;cursor:pointer;}
 .ds-group{margin-bottom:40px;}
 .ds-group-label{font-size:.8rem;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:#6b7280;padding:0 0 10px;border-bottom:2px solid #e5e7eb;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
 .ds-group-label .sfx{font-size:.68rem;font-weight:600;background:#e0e7ff;color:#3730a3;border-radius:4px;padding:1px 7px;letter-spacing:0;text-transform:none;}
@@ -378,11 +280,11 @@ $ds_count=count($alle_seiten);
 <body class="bo" data-csrf="<?= wcr_csrf_attr() ?>">
 <?php include __DIR__ . '/../inc/menu.php'; ?>
 
-<!-- ── Sync-Popup (iFrame → ds-sync.php) ─────────────────────────────────── -->
+<!-- ── Sync-Popup ─────────────────────────────────────────────────────────── -->
 <div id="sync-overlay" onclick="if(event.target===this)closeSyncPopup()">
   <div id="sync-popup">
     <div id="sync-popup-header">
-      <h2>⚙️ DS-Seiten Sync</h2>
+      <h2>⚙️ DS-Seiten Sync &amp; Settings</h2>
       <button id="sync-popup-close" onclick="closeSyncPopup()" title="Schließen">✕</button>
     </div>
     <iframe id="sync-iframe" src="" title="DS-Seiten Sync"></iframe>
@@ -413,40 +315,9 @@ $ds_count=count($alle_seiten);
 
 <?php if ($save_msg): ?><div class="save-notice"><?= htmlspecialchars($save_msg,ENT_QUOTES,'UTF-8') ?></div><?php endif; ?>
 
-<!-- Suffix Manager -->
-<div class="ds-suffix-manager">
-  <h3>🏷️ Suffix-Gruppen <small style="font-weight:400;color:#9ca3af;margin-left:4px;">be/inc/ds-suffixes.json</small></h3>
-  <div class="ds-suffix-list">
-    <?php foreach ($SUFFIX_MAP as $sfx => $cfg): ?>
-    <span class="ds-suffix-chip">
-      <?= htmlspecialchars($cfg['label'],ENT_QUOTES,'UTF-8') ?>
-      <code><?= htmlspecialchars($sfx,ENT_QUOTES,'UTF-8') ?></code>
-      <span style="font-size:.65rem;color:#9ca3af;"><?= (int)($cfg['w']??1920) ?>×<?= (int)($cfg['h']??1080) ?><?= !empty($cfg['portrait'])?' 📱':'' ?></span>
-    </span>
-    <?php endforeach; ?>
-  </div>
-  <?php if ($suffix_save_msg): ?>
-  <div style="margin-bottom:10px;padding:6px 12px;background:#d1fae5;border-radius:6px;font-size:.8rem;color:#065f46;font-weight:600;"><?= $suffix_save_msg ?></div>
-  <?php endif; ?>
-  <form method="post">
-    <?= wcr_csrf_field() ?>
-    <input type="hidden" name="wcr_suffix_save" value="1">
-    <div class="ds-suffix-add">
-      <label>Suffix-Key<input type="text" name="suffix_key" placeholder="z.B. ticker" maxlength="30"></label>
-      <label>Label<input type="text" name="suffix_label" placeholder="z.B. 📺 Ticker" maxlength="60"></label>
-      <label>Breite<select name="suffix_w"><option value="1920">1920</option><option value="1080">1080</option></select></label>
-      <label>Höhe<select name="suffix_h"><option value="1080">1080</option><option value="1920">1920</option></select></label>
-      <label style="flex-direction:row;align-items:center;gap:5px;"><input type="checkbox" name="suffix_portrait"> Portrait</label>
-      <button type="submit" class="ds-suffix-add-btn">+ Suffix hinzufügen</button>
-    </div>
-  </form>
-</div>
-
-<?php foreach ($gruppen as $sfx => $g):
-  $portrait  = $g['portrait'];
-  $galClass  = $portrait ? 'portrait' : 'landscape';
-  $nW = (int)($g['w'] ?? 1920);
-  $nH = (int)($g['h'] ?? 1080);
+<?php foreach ($gruppen as $sfx=>$g):
+  $galClass=$g['portrait']?'portrait':'landscape';
+  $nW=(int)($g['w']??1920); $nH=(int)($g['h']??1080);
 ?>
 <div class="ds-group">
   <div class="ds-group-label">
@@ -456,13 +327,10 @@ $ds_count=count($alle_seiten);
   </div>
   <div class="ds-gallery <?= $galClass ?>">
   <?php foreach ($g['seiten'] as $s):
-    $i        = $s['_idx'];
-    $status   = $s['status'];
-    $rule     = $s['rule'];
-    $ov       = isset($rule['override']) ? $rule['override'] : 'auto';
-    $effektiv = ($ov==='force_on') ? true : (($ov==='force_off') ? false : $status['active']);
-    $bc       = $effektiv ? '#00c853' : '#ff3b30';
-    $bt       = $effektiv ? 'Aktiv' : 'Inaktiv';
+    $i=$s['_idx']; $status=$s['status']; $rule=$s['rule'];
+    $ov=$rule['override']??'auto';
+    $effektiv=($ov==='force_on')?true:(($ov==='force_off')?false:$status['active']);
+    $bc=$effektiv?'#00c853':'#ff3b30'; $bt=$effektiv?'Aktiv':'Inaktiv';
   ?>
   <div class="ds-card <?= !$effektiv?'ds-inactive':'' ?>" id="ds-card-<?= $i ?>">
     <div class="ds-card-header">
@@ -481,7 +349,6 @@ $ds_count=count($alle_seiten);
         <a class="ds-btn primary" href="<?= htmlspecialchars($s['url'],ENT_QUOTES,'UTF-8') ?>" target="_blank" rel="noopener">↗ Öffnen</a>
       </div>
     </div>
-
     <div class="rule-panel" id="rule-panel-<?= $i ?>">
       <form method="post">
         <?= wcr_csrf_field() ?>
@@ -494,21 +361,20 @@ $ds_count=count($alle_seiten);
             <option value="force_off" <?= $ov==='force_off'?'selected':'' ?>>Force OFF</option>
           </select></div>
         <div class="rule-row"><label>Tabellen</label>
-          <div class="rule-cb-group">
-            <?php foreach($ALLOWED_TABLES as $tbl): ?>
+          <div class="rule-cb-group"><?php foreach($ALLOWED_TABLES as $tbl): ?>
             <label><input type="checkbox" name="tables[]" value="<?= htmlspecialchars($tbl,ENT_QUOTES,'UTF-8') ?>"
-              <?= in_array($tbl,(array)(isset($rule['tables'])?$rule['tables']:[]),true)?'checked':'' ?>>
+              <?= in_array($tbl,(array)($rule['tables']??[]),true)?'checked':'' ?>>
               <?= htmlspecialchars($tbl,ENT_QUOTES,'UTF-8') ?></label>
-            <?php endforeach; ?></div></div>
+          <?php endforeach; ?></div></div>
         <div class="rule-row"><label>Typ</label>
-          <input type="text" name="typ" value="<?= htmlspecialchars(isset($rule['typ'])?$rule['typ']:'',ENT_QUOTES,'UTF-8') ?>" list="typen-list" placeholder="z.B. Burger">
+          <input type="text" name="typ" value="<?= htmlspecialchars($rule['typ']??'',ENT_QUOTES,'UTF-8') ?>" list="typen-list" placeholder="z.B. Burger">
           <datalist id="typen-list"><?php foreach($typen_all as $tv):?><option value="<?= htmlspecialchars($tv,ENT_QUOTES,'UTF-8') ?>"><?php endforeach;?></datalist></div>
         <div class="rule-row"><label>IDs</label>
-          <input type="text" name="ids" value="<?= htmlspecialchars(isset($rule['ids'])?$rule['ids']:'',ENT_QUOTES,'UTF-8') ?>" placeholder="3010,3089"></div>
+          <input type="text" name="ids" value="<?= htmlspecialchars($rule['ids']??'',ENT_QUOTES,'UTF-8') ?>" placeholder="3010,3089"></div>
         <div class="rule-row"><label>Mode</label>
           <select name="mode">
-            <option value="any" <?= (isset($rule['mode'])?$rule['mode']:'any')==='any'?'selected':'' ?>>any – mind. 1 aktiv</option>
-            <option value="all" <?= (isset($rule['mode'])?$rule['mode']:'any')==='all'?'selected':'' ?>>all – alle aktiv</option>
+            <option value="any" <?= ($rule['mode']??'any')==='any'?'selected':'' ?>>any – mind. 1 aktiv</option>
+            <option value="all" <?= ($rule['mode']??'any')==='all'?'selected':'' ?>>all – alle aktiv</option>
           </select></div>
         <div class="rule-row">
           <span class="rule-status <?= !$status['db_ok']?'dberr':($status['active']?'active':'inactive') ?>">
@@ -517,7 +383,6 @@ $ds_count=count($alle_seiten);
         <button type="submit" class="rule-save-btn">Speichern</button>
       </form>
     </div>
-
     <div class="ds-frame-wrap" id="ds-wrap-<?= $i ?>">
       <div class="ds-spin-wrap" id="ds-spin-<?= $i ?>">
         <div class="ds-spinner"></div><span>Lädt…</span>
@@ -553,11 +418,7 @@ function dsLoaded(i){
   var f=document.getElementById('ds-frame-'+i),sp=document.getElementById('ds-spin-'+i),ti=document.getElementById('ds-time-'+i);
   if(!f||!sp)return;
   f.classList.add('loaded');sp.classList.add('hidden');
-  if(ti&&dsStartTimes[i]){
-    var ms=Date.now()-dsStartTimes[i];
-    ti.textContent='✓ '+(ms/1000).toFixed(1)+'s';
-    ti.style.color=ms<2000?'#16a34a':ms<5000?'#d97706':'#dc2626';
-  }
+  if(ti&&dsStartTimes[i]){var ms=Date.now()-dsStartTimes[i];ti.textContent='✓ '+(ms/1000).toFixed(1)+'s';ti.style.color=ms<2000?'#16a34a':ms<5000?'#d97706':'#dc2626';}
   var w=document.getElementById('ds-wrap-'+i);if(w)dsScaleWrap(w);
 }
 function dsReload(i){
@@ -571,19 +432,12 @@ function dsReload(i){
   f.src=f.dataset.src+'?t='+Date.now();
 }
 function dsReloadAll(){for(var i=0;i<DS_COUNT;i++)dsReload(i);}
-function toggleRule(i){
-  var p=document.getElementById('rule-panel-'+i);
-  if(p)p.classList.toggle('open');
-}
-// ── Sync-Popup ──────────────────────────────────────────────────────────────
-var SYNC_URL='ds-sync.php';
+function toggleRule(i){var p=document.getElementById('rule-panel-'+i);if(p)p.classList.toggle('open');}
+// ── Sync-Popup ──
 function openSyncPopup(){
-  var ov=document.getElementById('sync-overlay');
-  var fr=document.getElementById('sync-iframe');
+  var ov=document.getElementById('sync-overlay'),fr=document.getElementById('sync-iframe');
   if(!ov||!fr)return;
-  if(!fr.src||fr.src===window.location.href||fr.getAttribute('src')===''){
-    fr.src=SYNC_URL;
-  }
+  if(!fr.getAttribute('src'))fr.src='ds-sync.php?popup=1';
   ov.classList.add('open');
   document.body.style.overflow='hidden';
 }
@@ -592,9 +446,7 @@ function closeSyncPopup(){
   if(ov)ov.classList.remove('open');
   document.body.style.overflow='';
 }
-document.addEventListener('keydown',function(e){
-  if(e.key==='Escape')closeSyncPopup();
-});
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeSyncPopup();});
 document.addEventListener('DOMContentLoaded',function(){
   document.querySelectorAll('.ds-frame-wrap').forEach(function(w){ro.observe(w);dsScaleWrap(w);});
   setTimeout(function(){

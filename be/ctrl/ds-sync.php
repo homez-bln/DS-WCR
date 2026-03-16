@@ -1,20 +1,42 @@
 <?php
 /**
  * ctrl/ds-sync.php — WP-Seiten automatisch generieren
- * v2.3: Titel aus Slug (DS Burger Highlight) + PRG verhindert Re-Trigger bei Reload
+ * v2.4: ?popup=1 → kein Menü, kein padding, Suffix-Manager integriert
  */
 require_once __DIR__ . '/../inc/auth.php';
 require_once __DIR__ . '/../inc/db.php';
 
 wcr_require('view_ds');
 
+$IS_POPUP       = isset($_GET['popup']) && $_GET['popup'] === '1';
 $PAGE_TITLE     = 'DS-Seiten Sync';
 $SITE_URL       = 'https://wcr-webpage.de';
 $WP_API_BASE    = $SITE_URL . '/wp-json/wp/v2';
 $PAGES_FILE     = __DIR__ . '/../inc/ds-pages.json';
 $CONFIG_FILE    = __DIR__ . '/../inc/ds-sync-config.json';
+$SUFFIX_FILE    = __DIR__ . '/../inc/ds-suffixes.json';
 $ALLOWED_TABLES = ['food','drinks','ice','cable','camping','extra'];
 
+// ── Suffix-Helpers ────────────────────────────────────────────────────────────
+function wcr_sync_load_suffixes(string $file): array {
+    $defaults = [
+        'suffixes' => [
+            'landscape' => ['label'=>'🖼️ 16:9 — Landscape','portrait'=>false,'w'=>1920,'h'=>1080],
+            'list'      => ['label'=>'📋 Listen',           'portrait'=>false,'w'=>1920,'h'=>1080],
+            'highlight' => ['label'=>'✨ Highlight',        'portrait'=>false,'w'=>1920,'h'=>1080],
+            'portrait'  => ['label'=>'📱 9:16 — Portrait',  'portrait'=>true, 'w'=>1080,'h'=>1920],
+        ],
+        'default' => 'landscape',
+    ];
+    if (!file_exists($file)) return $defaults;
+    $raw = json_decode(file_get_contents($file), true);
+    return (is_array($raw) && !empty($raw['suffixes'])) ? $raw : $defaults;
+}
+function wcr_sync_save_suffixes(string $file, array $cfg): void {
+    file_put_contents($file, json_encode($cfg, JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE), LOCK_EX);
+}
+
+// ── Sync-Helpers ──────────────────────────────────────────────────────────────
 function wcr_sync_load_config(string $file): array {
     if (!file_exists($file)) return ['wp_user'=>'','wp_app_pass'=>''];
     $r = json_decode(file_get_contents($file), true);
@@ -23,15 +45,11 @@ function wcr_sync_load_config(string $file): array {
 function wcr_sync_save_config(string $file, array $cfg): void {
     file_put_contents($file, json_encode($cfg, JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE), LOCK_EX);
 }
-$cfg = wcr_sync_load_config($CONFIG_FILE);
-
 function wcr_sync_load_pages(string $file): array {
     if (!file_exists($file)) return [];
     $r = json_decode(file_get_contents($file), true);
     return is_array($r) ? $r : [];
 }
-$pages_def = wcr_sync_load_pages($PAGES_FILE);
-
 function wcr_sync_get_typen(PDO $pdo, array $tables): array {
     $result = [];
     foreach ($tables as $tbl) {
@@ -40,249 +58,185 @@ function wcr_sync_get_typen(PDO $pdo, array $tables): array {
                         ->fetchAll(PDO::FETCH_COLUMN);
             foreach ($rows as $t) {
                 $t = trim($t);
-                if ($t !== '') $result[] = ['table' => $tbl, 'typ' => $t];
+                if ($t !== '') $result[] = ['table'=>$tbl,'typ'=>$t];
             }
         } catch (Exception $e) {}
     }
     return $result;
 }
-
-// Slug: ds-{name}-{suffix} — nur a-z, 0-9, Bindestriche
 function wcr_sync_make_slug(string $name, string $suffix): string {
     $map = ["\xc3\xa4"=>'ae',"\xc3\xb6"=>'oe',"\xc3\xbc"=>'ue',"\xc3\x9f"=>'ss',
-            "\xc3\x84"=>'ae',"\xc3\x96"=>'oe',"\xc3\x9c"=>'ue',
-            '&'=>'und',' '=>'-'];
-    $name = mb_strtolower(trim($name), 'UTF-8');
-    foreach ($map as $k => $v) $name = str_replace($k, $v, $name);
-    $name = preg_replace('/[^a-z0-9\-]+/', '-', $name);
-    $name = trim(preg_replace('/-+/', '-', $name), '-');
-    return 'ds-' . $name . '-' . $suffix;
-}
-
-// Titel aus Slug: ds-burger-highlight → DS Burger Highlight
-function wcr_sync_title_from_slug(string $slug): string {
-    // Bindestriche durch Leerzeichen, dann ucwords
-    return implode(' ', array_map('ucfirst', explode('-', $slug)));
-    // Ergebnis: "Ds Burger Highlight" → wir wollen "DS Burger Highlight"
-    // DS immer uppercase:
+            "\xc3\x84"=>'ae',"\xc3\x96"=>'oe',"\xc3\x9c"=>'ue','&'=>'und',' '=>'-'];
+    $name = mb_strtolower(trim($name),'UTF-8');
+    foreach ($map as $k=>$v) $name = str_replace($k,$v,$name);
+    $name = trim(preg_replace('/-+/','-',preg_replace('/[^a-z0-9\-]+/','-',$name)),'-');
+    return 'ds-'.$name.'-'.$suffix;
 }
 function wcr_sync_make_title(string $slug): string {
-    $parts = explode('-', $slug);
-    $parts = array_map(function($p) {
-        // 'ds' → 'DS', rest ucfirst
-        return strtolower($p) === 'ds' ? 'DS' : ucfirst($p);
-    }, $parts);
-    return implode(' ', $parts);
+    return implode(' ',array_map(fn($p)=>strtolower($p)==='ds'?'DS':ucfirst($p),explode('-',$slug)));
 }
-
 function wcr_http_code(array $headers): int {
-    foreach ($headers as $h) {
-        if (preg_match('/HTTP\/\S+\s+(\d+)/', $h, $m)) return (int)$m[1];
-    }
+    foreach ($headers as $h) { if (preg_match('/HTTP\/\S+\s+(\d+)/',$h,$m)) return (int)$m[1]; }
     return 0;
 }
-
 function wcr_sync_test_auth(string $api_base, string $auth): array {
-    $ctx = stream_context_create(['http'=>[
-        'timeout'=>6,'ignore_errors'=>true,
-        'header'=>"Accept: application/json\r\nAuthorization: Basic {$auth}\r\n",
-    ]]);
-    $raw  = @file_get_contents($api_base.'/users/me?_fields=id,name', false, $ctx);
-    $code = wcr_http_code($http_response_header ?? []);
-    if ($raw === false) return ['ok'=>false,'msg'=>'HTTP fehlgeschlagen'];
-    if ($code === 401)  return ['ok'=>false,'msg'=>'401 Unauthorized — falsches Passwort oder User'];
-    if ($code === 403)  return ['ok'=>false,'msg'=>'403 Forbidden'];
-    $res = json_decode($raw, true);
+    $ctx = stream_context_create(['http'=>['timeout'=>6,'ignore_errors'=>true,
+        'header'=>"Accept: application/json\r\nAuthorization: Basic {$auth}\r\n"]]);
+    $raw = @file_get_contents($api_base.'/users/me?_fields=id,name',false,$ctx);
+    $code = wcr_http_code($http_response_header??[]);
+    if ($raw===false)  return ['ok'=>false,'msg'=>'HTTP fehlgeschlagen'];
+    if ($code===401)   return ['ok'=>false,'msg'=>'401 Unauthorized'];
+    if ($code===403)   return ['ok'=>false,'msg'=>'403 Forbidden'];
+    $res = json_decode($raw,true);
     if (!empty($res['id'])) return ['ok'=>true,'msg'=>'Eingeloggt als: '.($res['name']??'?')];
-    return ['ok'=>false,'msg'=>'Auth fehlgeschlagen: '.substr($raw,0,120)];
+    return ['ok'=>false,'msg'=>'Auth fehlgeschlagen'];
 }
-
 function wcr_sync_page_exists(string $api_base, string $slug, string $auth): array {
-    $url = $api_base.'/pages?slug='.urlencode($slug).'&status=any&per_page=1&_fields=id,slug,status';
-    $ctx = stream_context_create(['http'=>[
-        'timeout'=>8,'ignore_errors'=>true,
-        'header'=>"Accept: application/json\r\nAuthorization: Basic {$auth}\r\n",
-    ]]);
-    $raw  = @file_get_contents($url, false, $ctx);
-    $code = wcr_http_code($http_response_header ?? []);
-    if ($raw === false) return ['error'=>'HTTP fehlgeschlagen'];
-    if ($code === 401)  return ['error'=>'401 Unauthorized'];
-    if ($code === 403)  return ['error'=>'403 Forbidden'];
-    if ($code !== 200)  return ['error'=>'HTTP '.$code];
-    $data = json_decode($raw, true);
-    if (!is_array($data)) return ['error'=>'JSON-Fehler: '.substr($raw,0,80)];
-    if (!empty($data) && (int)($data[0]['id']??0) > 0)
+    $ctx = stream_context_create(['http'=>['timeout'=>8,'ignore_errors'=>true,
+        'header'=>"Accept: application/json\r\nAuthorization: Basic {$auth}\r\n"]]);
+    $raw = @file_get_contents($api_base.'/pages?slug='.urlencode($slug).'&status=any&per_page=1&_fields=id,slug,status',false,$ctx);
+    $code = wcr_http_code($http_response_header??[]);
+    if ($raw===false) return ['error'=>'HTTP fehlgeschlagen'];
+    if ($code===401)  return ['error'=>'401 Unauthorized'];
+    if ($code===403)  return ['error'=>'403 Forbidden'];
+    if ($code!==200)  return ['error'=>'HTTP '.$code];
+    $data = json_decode($raw,true);
+    if (!is_array($data)) return ['error'=>'JSON-Fehler'];
+    if (!empty($data)&&(int)($data[0]['id']??0)>0)
         return ['exists'=>true,'id'=>(int)$data[0]['id'],'status'=>$data[0]['status']??'?'];
     return ['exists'=>false];
 }
-
-function wcr_sync_elementor_data(string $shortcode): string {
-    $uid = substr(md5($shortcode.uniqid('',true)),0,7);
-    $data = [[
-        'id'       => $uid,
-        'elType'   => 'container',
-        'settings' => ['padding'=>['unit'=>'px','top'=>'0','right'=>'0','bottom'=>'0','left'=>'0','isLinked'=>true]],
-        'elements' => [[
-            'id'         => substr(md5($uid.'w'),0,7),
-            'elType'     => 'widget',
-            'widgetType' => 'shortcode',
-            'settings'   => ['shortcode' => $shortcode],
-            'elements'   => [],
-        ]],
-    ]];
-    return json_encode($data, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+function wcr_sync_elementor_data(string $sc): string {
+    $uid = substr(md5($sc.uniqid('',true)),0,7);
+    return json_encode([['id'=>$uid,'elType'=>'container',
+        'settings'=>['padding'=>['unit'=>'px','top'=>'0','right'=>'0','bottom'=>'0','left'=>'0','isLinked'=>true]],
+        'elements'=>[['id'=>substr(md5($uid.'w'),0,7),'elType'=>'widget','widgetType'=>'shortcode',
+            'settings'=>['shortcode'=>$sc],'elements'=>[]]],
+    ]],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
 }
-
-// Seite erstellen — Titel aus Slug, PATCH erzwingt Slug danach
-function wcr_sync_create_page(
-    string $api_base, string $auth,
-    string $slug, string $shortcode,
-    int $menu_order = 9999
-): array {
-    // Titel direkt aus Slug generieren: ds-burger-highlight → DS Burger Highlight
+function wcr_sync_create_page(string $api_base,string $auth,string $slug,string $sc,int $mo=9999): array {
     $title = wcr_sync_make_title($slug);
-
-    $body = json_encode([
-        'slug'       => $slug,
-        'title'      => $title,
-        'status'     => 'publish',
-        'menu_order' => $menu_order,
-        'content'    => '<!-- wp:shortcode -->'.$shortcode.'<!-- /wp:shortcode -->',
-        'meta'       => [
-            '_elementor_edit_mode'     => 'builder',
-            '_elementor_template_type' => 'page',
-            '_elementor_data'          => wcr_sync_elementor_data($shortcode),
-        ],
-    ], JSON_UNESCAPED_UNICODE);
-
-    $headers = implode("\r\n",[
-        'Content-Type: application/json',
-        'Accept: application/json',
-        'Authorization: Basic '.$auth,
-    ])."\r\n";
-
-    $ctx = stream_context_create(['http'=>[
-        'method'=>'POST','timeout'=>12,'ignore_errors'=>true,
-        'header'=>$headers,'content'=>$body,
-    ]]);
-    $raw  = @file_get_contents($api_base.'/pages', false, $ctx);
-    $code = wcr_http_code($http_response_header ?? []);
-
-    if ($raw === false) return ['ok'=>false,'error'=>'POST HTTP fehlgeschlagen'];
-    if ($code === 401)  return ['ok'=>false,'error'=>'401 Unauthorized'];
-    if ($code === 403)  return ['ok'=>false,'error'=>'403 Forbidden'];
-
-    $res = json_decode($raw, true);
-    if (!is_array($res) || empty($res['id']) || (int)$res['id'] < 1)
+    $body  = json_encode(['slug'=>$slug,'title'=>$title,'status'=>'publish','menu_order'=>$mo,
+        'content'=>'<!-- wp:shortcode -->'.$sc.'<!-- /wp:shortcode -->',
+        'meta'=>['_elementor_edit_mode'=>'builder','_elementor_template_type'=>'page',
+                 '_elementor_data'=>wcr_sync_elementor_data($sc)]],JSON_UNESCAPED_UNICODE);
+    $hdr = "Content-Type: application/json\r\nAccept: application/json\r\nAuthorization: Basic {$auth}\r\n";
+    $ctx = stream_context_create(['http'=>['method'=>'POST','timeout'=>12,'ignore_errors'=>true,'header'=>$hdr,'content'=>$body]]);
+    $raw = @file_get_contents($api_base.'/pages',false,$ctx);
+    $code = wcr_http_code($http_response_header??[]);
+    if ($raw===false) return ['ok'=>false,'error'=>'POST fehlgeschlagen'];
+    if ($code===401)  return ['ok'=>false,'error'=>'401 Unauthorized'];
+    if ($code===403)  return ['ok'=>false,'error'=>'403 Forbidden'];
+    $res = json_decode($raw,true);
+    if (!is_array($res)||empty($res['id'])||(int)$res['id']<1)
         return ['ok'=>false,'error'=>($res['message']??substr($raw,0,200))];
-
-    $page_id   = (int)$res['id'];
-    $real_slug = $res['slug'] ?? '';
-
-    // PATCH — Slug erzwingen falls WP ihn umbenannt hat
-    if ($real_slug !== $slug) {
-        $patch_body = json_encode(['slug' => $slug], JSON_UNESCAPED_UNICODE);
-        $pctx = stream_context_create(['http'=>[
-            'method'=>'POST','timeout'=>8,'ignore_errors'=>true,
-            'header'=>$headers.'X-HTTP-Method-Override: PATCH'."\r\n",
-            'content'=>$patch_body,
-        ]]);
-        @file_get_contents($api_base.'/pages/'.$page_id, false, $pctx);
+    $pid=$res['id']; $real=$res['slug']??'';
+    if ($real!==$slug) {
+        $pctx=stream_context_create(['http'=>['method'=>'POST','timeout'=>8,'ignore_errors'=>true,
+            'header'=>$hdr.'X-HTTP-Method-Override: PATCH'."\r\n",'content'=>json_encode(['slug'=>$slug])]]);
+        @file_get_contents($api_base.'/pages/'.$pid,false,$pctx);
     }
-
-    return ['ok'=>true,'id'=>$page_id,'url'=>$res['link']??'','slug_fixed'=>($real_slug !== $slug),'title'=>$title];
+    return ['ok'=>true,'id'=>$pid,'url'=>$res['link']??'','slug_fixed'=>($real!==$slug),'title'=>$title];
 }
 
-// ── POST-Handling ─────────────────────────────────────────────────────────────
+// ── Daten laden ───────────────────────────────────────────────────────────────
+$suffix_cfg = wcr_sync_load_suffixes($SUFFIX_FILE);
+$cfg        = wcr_sync_load_config($CONFIG_FILE);
+$pages_def  = wcr_sync_load_pages($PAGES_FILE);
+
+// ── POST: Suffix speichern ────────────────────────────────────────────────────
+$suffix_msg = '';
+if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['wcr_suffix_save'])) {
+    wcr_verify_csrf();
+    $nk = preg_replace('/[^a-z0-9_\-]/','',strtolower($_POST['suffix_key']??''));
+    $nl = trim(strip_tags($_POST['suffix_label']??''));
+    $np = isset($_POST['suffix_portrait']);
+    $nw = in_array((int)($_POST['suffix_w']??1920),[1920,1080])?(int)$_POST['suffix_w']:1920;
+    $nh = in_array((int)($_POST['suffix_h']??1080),[1080,1920])?(int)$_POST['suffix_h']:1080;
+    if ($nk!==''&&$nl!=='') {
+        $suffix_cfg['suffixes'][$nk]=['label'=>$nl,'portrait'=>$np,'w'=>$nw,'h'=>$nh];
+        wcr_sync_save_suffixes($SUFFIX_FILE,$suffix_cfg);
+        $suffix_msg='✅ Suffix <code>'.$nk.'</code> gespeichert!';
+    }
+    if ($IS_POPUP) { header('Location: ds-sync.php?popup=1&suffix_saved=1'); exit; }
+}
+
+// ── POST: Config speichern ────────────────────────────────────────────────────
 $config_msg = '';
 $auth_test  = null;
 if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['wcr_save_config'])) {
     wcr_verify_csrf();
-    $cfg['wp_user']     = trim($_POST['wp_user'] ?? '');
-    $cfg['wp_app_pass'] = trim($_POST['wp_app_pass'] ?? '');
-    wcr_sync_save_config($CONFIG_FILE, $cfg);
-    if ($cfg['wp_user'] && $cfg['wp_app_pass'])
-        $auth_test = wcr_sync_test_auth($WP_API_BASE, base64_encode($cfg['wp_user'].':'.$cfg['wp_app_pass']));
-    $config_msg = '✅ Gespeichert.';
+    $cfg['wp_user']     = trim($_POST['wp_user']??'');
+    $cfg['wp_app_pass'] = trim($_POST['wp_app_pass']??'');
+    wcr_sync_save_config($CONFIG_FILE,$cfg);
+    if ($cfg['wp_user']&&$cfg['wp_app_pass'])
+        $auth_test = wcr_sync_test_auth($WP_API_BASE,base64_encode($cfg['wp_user'].':'.$cfg['wp_app_pass']));
+    $config_msg='✅ Gespeichert.';
 }
 
-// Sync: PRG-Pattern — nach Sync redirect mit ?done=1 damit Reload nicht re-triggert
-$sync_log    = [];
-$sync_done   = isset($_GET['done']) && $_GET['done'] === '1';
-$sync_result = [];
-
-if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['wcr_run_sync'])) {
+// ── POST: Sync ────────────────────────────────────────────────────────────────
+$sync_log  = [];
+$sync_done = isset($_GET['done'])&&$_GET['done']==='1';
+if ($_SERVER['REQUEST_METHOD']==='POST'&&isset($_POST['wcr_run_sync'])) {
     wcr_verify_csrf();
-    $wp_user = $cfg['wp_user'] ?? '';
-    $wp_pass = $cfg['wp_app_pass'] ?? '';
-
-    if (empty($wp_user) || empty($wp_pass)) {
-        $sync_log[] = ['status'=>'error','slug'=>'–','msg'=>'Kein App-Password konfiguriert.'];
+    $wu=$cfg['wp_user']??''; $wp=$cfg['wp_app_pass']??'';
+    if (empty($wu)||empty($wp)) {
+        $sync_log[]=['status'=>'error','slug'=>'–','msg'=>'Kein App-Password konfiguriert.'];
     } else {
-        $auth = base64_encode($wp_user.':'.$wp_pass);
-        $auth_check = wcr_sync_test_auth($WP_API_BASE, $auth);
-        if (!$auth_check['ok']) {
-            $sync_log[] = ['status'=>'error','slug'=>'AUTH','msg'=>'⛔ '.$auth_check['msg']];
+        $auth=base64_encode($wu.':'.$wp);
+        $ac=wcr_sync_test_auth($WP_API_BASE,$auth);
+        if (!$ac['ok']) {
+            $sync_log[]=['status'=>'error','slug'=>'AUTH','msg'=>'⛔ '.$ac['msg']];
         } else {
-            $sync_log[] = ['status'=>'skip','slug'=>'AUTH','msg'=>'🔑 '.$auth_check['msg']];
-            $to_sync = [];
-            foreach (($pages_def['static'] ?? []) as $p)
-                $to_sync[] = ['slug'=>wcr_sync_make_slug($p['name'],$p['suffix']),'shortcode'=>$p['shortcode'],'menu_order'=>(int)($p['menu_order']??9999)];
-            foreach (($pages_def['tables'] ?? []) as $t)
-                $to_sync[] = ['slug'=>wcr_sync_make_slug($t['name'],$t['suffix']),'shortcode'=>$t['shortcode'],'menu_order'=>(int)($t['menu_order']??9999)];
-            $hl_tpl   = $pages_def['highlight_shortcode'] ?? '[wcr_produkte table="{table}" titel="{title}"]';
-            $hl_order = 200;
-            foreach (wcr_sync_get_typen($pdo, $ALLOWED_TABLES) as $entry) {
-                $sc = str_replace(['{table}','{title}'],[$entry['table'],$entry['typ']],$hl_tpl);
-                $to_sync[] = ['slug'=>wcr_sync_make_slug($entry['typ'],'highlight'),'shortcode'=>$sc,'menu_order'=>$hl_order];
-                $hl_order += 10;
+            $sync_log[]=['status'=>'skip','slug'=>'AUTH','msg'=>'🔑 '.$ac['msg']];
+            $to_sync=[];
+            foreach(($pages_def['static']??[]) as $p)
+                $to_sync[]=['slug'=>wcr_sync_make_slug($p['name'],$p['suffix']),'shortcode'=>$p['shortcode'],'menu_order'=>(int)($p['menu_order']??9999)];
+            foreach(($pages_def['tables']??[]) as $t)
+                $to_sync[]=['slug'=>wcr_sync_make_slug($t['name'],$t['suffix']),'shortcode'=>$t['shortcode'],'menu_order'=>(int)($t['menu_order']??9999)];
+            $hl_tpl=$pages_def['highlight_shortcode']??'[wcr_produkte table="{table}" titel="{title}"]';
+            $hl_mo=200;
+            foreach(wcr_sync_get_typen($pdo,$ALLOWED_TABLES) as $entry) {
+                $sc=str_replace(['{table}','{title}'],[$entry['table'],$entry['typ']],$hl_tpl);
+                $to_sync[]=['slug'=>wcr_sync_make_slug($entry['typ'],'highlight'),'shortcode'=>$sc,'menu_order'=>$hl_mo];
+                $hl_mo+=10;
             }
-            foreach ($to_sync as $page) {
-                $check = wcr_sync_page_exists($WP_API_BASE, $page['slug'], $auth);
-                if (!empty($check['error'])) {
-                    $sync_log[] = ['status'=>'error','slug'=>$page['slug'],'msg'=>'❌ '.$check['error']];
-                    continue;
-                }
-                if ($check['exists']) {
-                    $sync_log[] = ['status'=>'skip','slug'=>$page['slug'],'msg'=>'⏭ ID '.$check['id'].' ('.$check['status'].')'];
-                    continue;
-                }
-                $res = wcr_sync_create_page($WP_API_BASE, $auth, $page['slug'], $page['shortcode'], $page['menu_order']);
-                if ($res['ok']) {
-                    $extra = !empty($res['slug_fixed']) ? ' (Slug korrigiert)' : '';
-                    $sync_log[] = ['status'=>'created','slug'=>$page['slug'],'msg'=>'✅ '.$res['title'].' — ID '.$res['id'].$extra,'url'=>$res['url']??''];
-                } else {
-                    $sync_log[] = ['status'=>'error','slug'=>$page['slug'],'msg'=>'❌ '.$res['error']];
-                }
+            foreach($to_sync as $page) {
+                $check=wcr_sync_page_exists($WP_API_BASE,$page['slug'],$auth);
+                if (!empty($check['error'])){$sync_log[]=['status'=>'error','slug'=>$page['slug'],'msg'=>'❌ '.$check['error']];continue;}
+                if ($check['exists'])       {$sync_log[]=['status'=>'skip', 'slug'=>$page['slug'],'msg'=>'⏭ ID '.$check['id'].' ('.$check['status'].')'];continue;}
+                $res=wcr_sync_create_page($WP_API_BASE,$auth,$page['slug'],$page['shortcode'],$page['menu_order']);
+                if ($res['ok'])
+                    $sync_log[]=['status'=>'created','slug'=>$page['slug'],'msg'=>'✅ '.$res['title'].' — ID '.$res['id'].(!empty($res['slug_fixed'])?' (Slug korrigiert)':''),'url'=>$res['url']??''];
+                else
+                    $sync_log[]=['status'=>'error','slug'=>$page['slug'],'msg'=>'❌ '.$res['error']];
             }
         }
     }
-    // PRG: Session speichern, dann redirect
     session_start();
-    $_SESSION['wcr_sync_log'] = $sync_log;
-    header('Location: '.strtok($_SERVER['REQUEST_URI'],'?').'?done=1');
-    exit;
+    $_SESSION['wcr_sync_log']=$sync_log;
+    $redir = 'ds-sync.php?done=1'.($IS_POPUP?'&popup=1':'');
+    header('Location: '.$redir); exit;
 }
-
-// Nach Redirect: Log aus Session laden
 if ($sync_done) {
-    if (session_status() === PHP_SESSION_NONE) session_start();
-    $sync_log = $_SESSION['wcr_sync_log'] ?? [];
+    if (session_status()===PHP_SESSION_NONE) session_start();
+    $sync_log=$_SESSION['wcr_sync_log']??[];
     unset($_SESSION['wcr_sync_log']);
 }
 
-// ── Vorschau ─────────────────────────────────────────────────────────────────
-$preview = [];
-foreach (($pages_def['static'] ?? []) as $p)
-    $preview[] = ['slug'=>wcr_sync_make_slug($p['name'],$p['suffix']),'sc'=>$p['shortcode'],'group'=>'Statisch'];
-foreach (($pages_def['tables'] ?? []) as $t)
-    $preview[] = ['slug'=>wcr_sync_make_slug($t['name'],$t['suffix']),'sc'=>$t['shortcode'],'group'=>'Tabellen-Liste'];
-$hl_tpl = $pages_def['highlight_shortcode'] ?? '[wcr_produkte table="{table}" titel="{title}"]';
-foreach (wcr_sync_get_typen($pdo, $ALLOWED_TABLES) as $entry) {
-    $sc = str_replace(['{table}','{title}'],[$entry['table'],$entry['typ']],$hl_tpl);
-    $preview[] = ['slug'=>wcr_sync_make_slug($entry['typ'],'highlight'),'sc'=>$sc,'group'=>'Highlight ('.$entry['table'].')'];
+// ── Vorschau ──────────────────────────────────────────────────────────────────
+$preview=[];
+foreach(($pages_def['static']??[]) as $p)
+    $preview[]=['slug'=>wcr_sync_make_slug($p['name'],$p['suffix']),'sc'=>$p['shortcode'],'group'=>'Statisch'];
+foreach(($pages_def['tables']??[]) as $t)
+    $preview[]=['slug'=>wcr_sync_make_slug($t['name'],$t['suffix']),'sc'=>$t['shortcode'],'group'=>'Tabellen-Liste'];
+$hl_tpl=$pages_def['highlight_shortcode']??'[wcr_produkte table="{table}" titel="{title}"]';
+foreach(wcr_sync_get_typen($pdo,$ALLOWED_TABLES) as $entry) {
+    $sc=str_replace(['{table}','{title}'],[$entry['table'],$entry['typ']],$hl_tpl);
+    $preview[]=['slug'=>wcr_sync_make_slug($entry['typ'],'highlight'),'sc'=>$sc,'group'=>'Highlight ('.$entry['table'].')'];
 }
-$has_auth = !empty($cfg['wp_user']) && !empty($cfg['wp_app_pass']);
+$has_auth=!empty($cfg['wp_user'])&&!empty($cfg['wp_app_pass']);
+$suffix_saved = isset($_GET['suffix_saved']);
 ?>
 <!DOCTYPE html>
 <html lang="de">
@@ -290,17 +244,31 @@ $has_auth = !empty($cfg['wp_user']) && !empty($cfg['wp_app_pass']);
 <meta charset="UTF-8">
 <title><?= htmlspecialchars($PAGE_TITLE,ENT_QUOTES,'UTF-8') ?></title>
 <style>
+<?php if($IS_POPUP): ?>
+body{margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
+.sync-wrap{padding:16px 20px 40px;}
+<?php else: ?>
 .sync-wrap{max-width:960px;margin:0 auto;padding:0 20px 60px;}
-.sync-card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:20px 24px;margin-bottom:24px;}
-.sync-card h2{font-size:.95rem;font-weight:700;margin:0 0 14px;display:flex;align-items:center;gap:8px;}
+<?php endif; ?>
+.sync-card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:20px 24px;margin-bottom:20px;}
+.sync-card h2{font-size:.93rem;font-weight:700;margin:0 0 14px;display:flex;align-items:center;gap:8px;}
 .form-row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px;}
 .form-row label{font-size:.8rem;font-weight:600;color:#374151;display:flex;flex-direction:column;gap:3px;}
-.form-row input{border:1px solid #d1d5db;border-radius:6px;padding:6px 10px;font-size:.85rem;min-width:200px;}
-.btn-primary{background:#0071e3;color:#fff;border:none;border-radius:8px;padding:7px 20px;font-size:.85rem;font-weight:600;cursor:pointer;}
+.form-row input{border:1px solid #d1d5db;border-radius:6px;padding:6px 10px;font-size:.84rem;min-width:180px;}
+.btn-primary{background:#0071e3;color:#fff;border:none;border-radius:8px;padding:7px 20px;font-size:.84rem;font-weight:600;cursor:pointer;}
 .btn-primary:hover{background:#005bb5;}
-.btn-sync{background:#059669;color:#fff;border:none;border-radius:10px;padding:10px 28px;font-size:.95rem;font-weight:700;cursor:pointer;width:100%;margin-top:6px;}
+.btn-sync{background:#059669;color:#fff;border:none;border-radius:10px;padding:10px 0;font-size:.95rem;font-weight:700;cursor:pointer;width:100%;margin-top:6px;}
 .btn-sync:hover{background:#047857;}
 .btn-sync:disabled{background:#9ca3af;cursor:not-allowed;}
+/* Suffix Manager */
+.suffix-list{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;}
+.suffix-chip{display:inline-flex;align-items:center;gap:5px;background:#f9fafb;border:1px solid #d1d5db;border-radius:8px;padding:4px 10px;font-size:.75rem;font-weight:600;color:#374151;}
+.suffix-chip code{background:#e0e7ff;color:#3730a3;border-radius:4px;padding:1px 5px;font-size:.7rem;}
+.suffix-add{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;border-top:1px dashed #e5e7eb;padding-top:12px;margin-top:4px;}
+.suffix-add label{font-size:.76rem;font-weight:600;color:#374151;display:flex;flex-direction:column;gap:3px;}
+.suffix-add input[type=text],.suffix-add select{border:1px solid #d1d5db;border-radius:6px;padding:4px 8px;font-size:.8rem;min-width:110px;}
+.suffix-add-btn{background:#0071e3;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:.8rem;font-weight:600;cursor:pointer;align-self:flex-end;}
+/* Log */
 .preview-table{width:100%;border-collapse:collapse;font-size:.78rem;}
 .preview-table th{text-align:left;padding:6px 10px;background:#f3f4f6;font-weight:700;color:#6b7280;border-bottom:2px solid #e5e7eb;}
 .preview-table td{padding:6px 10px;border-bottom:1px solid #f3f4f6;vertical-align:top;}
@@ -309,33 +277,38 @@ $has_auth = !empty($cfg['wp_user']) && !empty($cfg['wp_app_pass']);
 .badge.list{background:#d1fae5;color:#065f46;}
 .badge.highlight{background:#fef3c7;color:#92400e;}
 .log-item{display:flex;gap:10px;padding:5px 0;border-bottom:1px solid #f3f4f6;font-size:.78rem;align-items:flex-start;}
-.log-item .log-slug{font-family:monospace;min-width:230px;color:#374151;}
+.log-item .log-slug{font-family:monospace;min-width:200px;color:#374151;}
 .log-item .log-msg{color:#6b7280;}
 .log-item.created .log-msg{color:#059669;font-weight:600;}
 .log-item.error   .log-msg{color:#dc2626;font-weight:600;}
 .log-item.skip    .log-msg{color:#9ca3af;}
-.notice{padding:10px 16px;border-radius:8px;font-size:.82rem;margin-bottom:12px;}
+.notice{padding:10px 14px;border-radius:8px;font-size:.82rem;margin-bottom:10px;}
 .notice.ok{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;font-weight:600;}
 .notice.err{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;font-weight:600;}
 .notice.warn{background:#fef3c7;color:#92400e;border:1px solid #fcd34d;}
-.summary{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;}
-.sum-chip{border-radius:8px;padding:6px 14px;font-size:.8rem;font-weight:700;}
+.summary{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;}
+.sum-chip{border-radius:8px;padding:5px 12px;font-size:.78rem;font-weight:700;}
 .sum-chip.c{background:#d1fae5;color:#065f46;}
 .sum-chip.s{background:#f0f9ff;color:#0369a1;}
 .sum-chip.e{background:#fee2e2;color:#991b1b;}
 </style>
 </head>
 <body class="bo">
+<?php if (!$IS_POPUP): ?>
 <?php include __DIR__ . '/../inc/menu.php'; ?>
+<?php endif; ?>
 <div class="sync-wrap">
+<?php if (!$IS_POPUP): ?>
 <div class="header-controls" style="margin-bottom:20px;">
   <h1>🔄 <?= htmlspecialchars($PAGE_TITLE,ENT_QUOTES,'UTF-8') ?></h1>
 </div>
+<?php endif; ?>
 
+<!-- ── WP Auth ──────────────────────────────────────────────────────────────── -->
 <div class="sync-card">
   <h2>🔑 WP Application Password</h2>
   <?php if ($config_msg): ?><div class="notice ok"><?= htmlspecialchars($config_msg,ENT_QUOTES,'UTF-8') ?></div><?php endif; ?>
-  <?php if ($auth_test !== null): ?><div class="notice <?= $auth_test['ok']?'ok':'err' ?>"><?= htmlspecialchars($auth_test['msg'],ENT_QUOTES,'UTF-8') ?></div><?php endif; ?>
+  <?php if ($auth_test!==null): ?><div class="notice <?= $auth_test['ok']?'ok':'err' ?>"><?= htmlspecialchars($auth_test['msg'],ENT_QUOTES,'UTF-8') ?></div><?php endif; ?>
   <?php if (!$has_auth): ?><div class="notice warn">⚠️ Noch kein App-Password. WP Admin → Benutzer → Profil → Anwendungspasswörter.</div><?php endif; ?>
   <form method="post">
     <?= wcr_csrf_field() ?>
@@ -348,17 +321,18 @@ $has_auth = !empty($cfg['wp_user']) && !empty($cfg['wp_app_pass']);
   </form>
 </div>
 
+<!-- ── Sync ausführen ───────────────────────────────────────────────────────── -->
 <div class="sync-card">
   <h2>🚀 Sync ausführen</h2>
   <p style="font-size:.82rem;color:#6b7280;margin:0 0 12px;">Titel = Slug lesbar (DS Burger Highlight). Kein Re-Trigger bei Reload.</p>
   <?php if (!empty($sync_log)):
-    $n_c=count(array_filter($sync_log,fn($l)=>$l['status']==='created'));
-    $n_s=count(array_filter($sync_log,fn($l)=>$l['status']==='skip'));
-    $n_e=count(array_filter($sync_log,fn($l)=>$l['status']==='error')); ?>
+    $nc=count(array_filter($sync_log,fn($l)=>$l['status']==='created'));
+    $ns=count(array_filter($sync_log,fn($l)=>$l['status']==='skip'));
+    $ne=count(array_filter($sync_log,fn($l)=>$l['status']==='error')); ?>
   <div class="summary">
-    <div class="sum-chip c">✅ <?= $n_c ?> erstellt</div>
-    <div class="sum-chip s">⏭ <?= $n_s ?> vorhanden</div>
-    <?php if($n_e): ?><div class="sum-chip e">❌ <?= $n_e ?> Fehler</div><?php endif; ?>
+    <div class="sum-chip c">✅ <?= $nc ?> erstellt</div>
+    <div class="sum-chip s">⏭ <?= $ns ?> vorhanden</div>
+    <?php if($ne): ?><div class="sum-chip e">❌ <?= $ne ?> Fehler</div><?php endif; ?>
   </div>
   <?php foreach($sync_log as $l): ?>
   <div class="log-item <?= htmlspecialchars($l['status'],ENT_QUOTES,'UTF-8') ?>">
@@ -368,7 +342,7 @@ $has_auth = !empty($cfg['wp_user']) && !empty($cfg['wp_app_pass']);
     </span>
   </div>
   <?php endforeach; ?>
-  <div style="height:12px;"></div>
+  <div style="height:10px;"></div>
   <?php endif; ?>
   <form method="post">
     <?= wcr_csrf_field() ?>
@@ -377,6 +351,36 @@ $has_auth = !empty($cfg['wp_user']) && !empty($cfg['wp_app_pass']);
   </form>
 </div>
 
+<!-- ── Suffix-Gruppen ───────────────────────────────────────────────────────── -->
+<div class="sync-card">
+  <h2>🏷️ Suffix-Gruppen <small style="font-weight:400;color:#9ca3af;font-size:.8rem;">ds-suffixes.json</small></h2>
+  <?php if($suffix_saved||$suffix_msg): ?>
+  <div class="notice ok"><?= $suffix_msg ?: '✅ Suffix gespeichert!' ?></div>
+  <?php endif; ?>
+  <div class="suffix-list">
+    <?php foreach($suffix_cfg['suffixes'] as $sfx=>$sc): ?>
+    <span class="suffix-chip">
+      <?= htmlspecialchars($sc['label'],ENT_QUOTES,'UTF-8') ?>
+      <code><?= htmlspecialchars($sfx,ENT_QUOTES,'UTF-8') ?></code>
+      <span style="font-size:.65rem;color:#9ca3af;"><?= (int)($sc['w']??1920) ?>×<?= (int)($sc['h']??1080) ?><?= !empty($sc['portrait'])?' 📱':'' ?></span>
+    </span>
+    <?php endforeach; ?>
+  </div>
+  <form method="post">
+    <?= wcr_csrf_field() ?>
+    <input type="hidden" name="wcr_suffix_save" value="1">
+    <div class="suffix-add">
+      <label>Key<input type="text" name="suffix_key" placeholder="z.B. ticker" maxlength="30"></label>
+      <label>Label<input type="text" name="suffix_label" placeholder="z.B. 📺 Ticker" maxlength="60"></label>
+      <label>Breite<select name="suffix_w"><option value="1920">1920</option><option value="1080">1080</option></select></label>
+      <label>Höhe<select name="suffix_h"><option value="1080">1080</option><option value="1920">1920</option></select></label>
+      <label style="flex-direction:row;align-items:center;gap:5px;"><input type="checkbox" name="suffix_portrait"> Portrait</label>
+      <button type="submit" class="suffix-add-btn">+ Hinzufügen</button>
+    </div>
+  </form>
+</div>
+
+<!-- ── Geplante Seiten ──────────────────────────────────────────────────────── -->
 <div class="sync-card">
   <h2>📋 Geplante Seiten <small style="font-weight:400;color:#9ca3af;">(<?= count($preview) ?> total)</small></h2>
   <table class="preview-table">
@@ -384,19 +388,21 @@ $has_auth = !empty($cfg['wp_user']) && !empty($cfg['wp_app_pass']);
     <tbody>
     <?php foreach($preview as $p):
       $bc=str_contains($p['group'],'Statisch')?'static':(str_contains($p['group'],'Liste')?'list':'highlight');
-      $ptitle = wcr_sync_make_title($p['slug']);
     ?>
     <tr>
-      <td><code style="font-size:.74rem;"><?= htmlspecialchars($p['slug'],ENT_QUOTES,'UTF-8') ?></code></td>
-      <td style="font-size:.78rem;font-weight:600;color:#111;"><?= htmlspecialchars($ptitle,ENT_QUOTES,'UTF-8') ?></td>
+      <td><code style="font-size:.73rem;"><?= htmlspecialchars($p['slug'],ENT_QUOTES,'UTF-8') ?></code></td>
+      <td style="font-size:.78rem;font-weight:600;color:#111;"><?= htmlspecialchars(wcr_sync_make_title($p['slug']),ENT_QUOTES,'UTF-8') ?></td>
       <td><span class="badge <?= $bc ?>"><?= htmlspecialchars($p['group'],ENT_QUOTES,'UTF-8') ?></span></td>
-      <td><code style="font-size:.71rem;color:#6b7280;"><?= htmlspecialchars($p['sc'],ENT_QUOTES,'UTF-8') ?></code></td>
+      <td><code style="font-size:.7rem;color:#6b7280;"><?= htmlspecialchars($p['sc'],ENT_QUOTES,'UTF-8') ?></code></td>
     </tr>
     <?php endforeach; ?>
     </tbody>
   </table>
 </div>
-</div>
+
+</div><!-- /sync-wrap -->
+<?php if (!$IS_POPUP): ?>
 <?php include __DIR__ . '/../inc/debug.php'; ?>
+<?php endif; ?>
 </body>
 </html>
