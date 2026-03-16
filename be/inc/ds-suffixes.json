@@ -1,0 +1,12 @@
+{
+  "_comment": "Suffix-Map: WP-Slug ds-NAME-SUFFIX → Gruppe. Neue Einträge hier hinzufügen.",
+  "suffixes": {
+    "landscape" : { "label": "🖼️ 16:9 — Landscape",      "portrait": false, "w": 1920, "h": 1080 },
+    "list"      : { "label": "📋 Listen",                  "portrait": false, "w": 1920, "h": 1080 },
+    "highlight" : { "label": "✨ Highlight / Spotlight",   "portrait": false, "w": 1920, "h": 1080 },
+    "portrait"  : { "label": "📱 9:16 — Portrait",         "portrait": true,  "w": 1080, "h": 1920 },
+    "story"     : { "label": "📱 Story Format",             "portrait": true,  "w": 1080, "h": 1920 },
+    "square"    : { "label": "⬛ Quadrat 1:1",             "portrait": false, "w": 1080, "h": 1080 }
+  },
+  "default": "landscape"
+}
