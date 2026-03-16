@@ -1,8 +1,7 @@
 <?php
 /**
  * ctrl/ds-seiten.php — DS-Seiten Vorschau + Aktivierungssteuerung
- * v5.0: Suffix-basierte Gruppierung (ds-wetter-list, ds-insta-portrait)
- *       Dynamisch erweiterbar via be/inc/ds-suffixes.json
+ * v5.1: Settings-Popup mit ds-sync.php iFrame
  */
 require_once __DIR__ . '/../inc/auth.php';
 require_once __DIR__ . '/../inc/db.php';
@@ -17,7 +16,6 @@ $ALLOWED_TABLES = ['food','drinks','cable','camping','extra','ice'];
 $RULES_FILE    = __DIR__ . '/../inc/ds-rules.json';
 $SUFFIX_FILE   = __DIR__ . '/../inc/ds-suffixes.json';
 
-// ── Suffix-Konfiguration laden ──────────────────────────────────────────────
 function wcr_ds_load_suffixes(string $file): array {
     $defaults = [
         'suffixes' => [
@@ -44,22 +42,13 @@ function wcr_ds_save_rules(string $file, array $rules): void {
 }
 
 $suffix_config = wcr_ds_load_suffixes($SUFFIX_FILE);
-$SUFFIX_MAP    = $suffix_config['suffixes'];   // ['list'=>[...], 'portrait'=>[...], ...]
+$SUFFIX_MAP    = $suffix_config['suffixes'];
 $DEFAULT_SUFFIX = isset($suffix_config['default']) ? $suffix_config['default'] : 'landscape';
 $rules         = wcr_ds_load_rules($RULES_FILE);
 
-/**
- * Slug parsen: ds-wetter-list  →  slug=wetter, suffix=list
- * Schema:  ds-{name}-{suffix}   oder   ds-{name}  (kein Suffix → default)
- *
- * Wenn das letzte Segment eine bekannte Suffix-Map-Key ist, wird es als Suffix verwendet.
- * Unbekannte letzte Segmente zählen als Teil des Namens (→ Default-Gruppe).
- */
 function wcr_ds_parse_slug_suffix(string $after, array $suffix_map, string $default): array {
-    // $after = alles nach "ds-", z.B. "wetter-list" oder "insta-portrait" oder "park"
     $parts = explode('-', $after);
     $last  = strtolower(end($parts));
-
     if (count($parts) > 1 && isset($suffix_map[$last])) {
         $suffix = $last;
         array_pop($parts);
@@ -71,7 +60,6 @@ function wcr_ds_parse_slug_suffix(string $after, array $suffix_map, string $defa
     return ['slug' => $slug, 'suffix' => $suffix];
 }
 
-// ── WP-Seiten via REST API laden ────────────────────────────────────────────
 function wcr_ds_load_wp_pages_api(
     string $api_base, string $slug_pre, string $site_url,
     array $suffix_map, string $default_suffix
@@ -81,7 +69,6 @@ function wcr_ds_load_wp_pages_api(
     $raw = @file_get_contents($url, false, $ctx);
     if ($raw === false)
         return ['pages'=>[],'error'=>'HTTP-Anfrage fehlgeschlagen (allow_url_fopen?)'];
-
     $http_code = 0;
     if (!empty($http_response_header)) {
         preg_match('/HTTP\/\S+\s+(\d+)/', $http_response_header[0], $m);
@@ -89,30 +76,22 @@ function wcr_ds_load_wp_pages_api(
     }
     if ($http_code !== 200)
         return ['pages'=>[],'error'=>'REST API HTTP '.$http_code,'raw'=>substr($raw,0,300)];
-
     $data = json_decode($raw, true);
     if (!is_array($data))
         return ['pages'=>[],'error'=>'JSON-Decode fehlgeschlagen'];
-
     $result = [];
     foreach ($data as $p) {
         $full_slug = isset($p['slug']) ? $p['slug'] : '';
         if (strpos($full_slug, $slug_pre) !== 0) continue;
-
-        $after  = substr($full_slug, strlen($slug_pre)); // z.B. "wetter-list"
+        $after  = substr($full_slug, strlen($slug_pre));
         $parsed = wcr_ds_parse_slug_suffix($after, $suffix_map, $default_suffix);
-        $slug   = $parsed['slug'];    // z.B. "wetter"
-        $suffix = $parsed['suffix'];  // z.B. "list"
-
-        // Unbekannter Suffix → wird als neue dynamische Gruppe registriert
-        if (!isset($suffix_map[$suffix])) {
+        $slug   = $parsed['slug'];
+        $suffix = $parsed['suffix'];
+        if (!isset($suffix_map[$suffix]))
             $suffix_map[$suffix] = ['label'=>'📄 '.ucfirst($suffix),'portrait'=>false,'w'=>1920,'h'=>1080];
-        }
-
         $title = isset($p['title']['rendered']) ? $p['title']['rendered'] : $full_slug;
         $title = strip_tags(html_entity_decode($title, ENT_QUOTES, 'UTF-8'));
         $order = isset($p['menu_order']) ? (int)$p['menu_order'] : 9999;
-
         $result[] = [
             'title'      => $title,
             'slug'       => $slug,
@@ -124,40 +103,36 @@ function wcr_ds_load_wp_pages_api(
             'wp_id'      => isset($p['id']) ? (int)$p['id'] : 0,
         ];
     }
-
     usort($result, function($a,$b){ return $a['sort_order'] - $b['sort_order']; });
     return ['pages'=>$result, 'total_wp'=>count($data), 'suffix_map'=>$suffix_map];
 }
 
 $api_result   = wcr_ds_load_wp_pages_api($WP_API_BASE, $DS_SLUG_PRE, $SITE_URL, $SUFFIX_MAP, $DEFAULT_SUFFIX);
 $wp_seiten    = $api_result['pages'];
-$api_error    = isset($api_result['error'])      ? $api_result['error']      : null;
-$api_total    = isset($api_result['total_wp'])   ? $api_result['total_wp']   : null;
-// Merge: eventuell neue dynamische Suffixe aus WP
+$api_error    = isset($api_result['error'])    ? $api_result['error']    : null;
+$api_total    = isset($api_result['total_wp']) ? $api_result['total_wp'] : null;
 if (!empty($api_result['suffix_map'])) $SUFFIX_MAP = $api_result['suffix_map'];
 
-// ── Fallback-Liste ──────────────────────────────────────────────────────────
 $fallback_seiten = [
-    ['title'=>'Starter Pack',       'slug'=>'starter-pack',       'full_slug'=>'ds-starter-pack-landscape',        'url'=>$SITE_URL.'/ds-starter-pack-landscape/',        'icon'=>'🏄','suffix'=>'landscape','sort_order'=>10],
-    ['title'=>'Wetter',             'slug'=>'wetter',             'full_slug'=>'ds-wetter-landscape',              'url'=>$SITE_URL.'/ds-wetter-landscape/',              'icon'=>'🌤','suffix'=>'landscape','sort_order'=>20],
-    ['title'=>'Wind Map',           'slug'=>'windmap',            'full_slug'=>'ds-windmap-landscape',             'url'=>$SITE_URL.'/ds-windmap-landscape/',             'icon'=>'💨','suffix'=>'landscape','sort_order'=>30],
-    ['title'=>'Tickets / Cable',    'slug'=>'tickets',            'full_slug'=>'ds-tickets-landscape',             'url'=>$SITE_URL.'/ds-tickets-landscape/',             'icon'=>'🏄','suffix'=>'landscape','sort_order'=>40],
-    ['title'=>'Park',               'slug'=>'park',               'full_slug'=>'ds-park-landscape',                'url'=>$SITE_URL.'/ds-park-landscape/',                'icon'=>'🌊','suffix'=>'landscape','sort_order'=>50],
-    ['title'=>'Kino',               'slug'=>'kino',               'full_slug'=>'ds-kino-landscape',                'url'=>$SITE_URL.'/ds-kino-landscape/',                'icon'=>'🎦','suffix'=>'landscape','sort_order'=>60],
-    ['title'=>'Cable Preisliste',   'slug'=>'cable',              'full_slug'=>'ds-cable-list',                    'url'=>$SITE_URL.'/ds-cable-list/',                    'icon'=>'🎫','suffix'=>'list',     'sort_order'=>10],
-    ['title'=>'Eiskarte',           'slug'=>'eis',                'full_slug'=>'ds-eis-list',                      'url'=>$SITE_URL.'/ds-eis-list/',                      'icon'=>'🍦','suffix'=>'list',     'sort_order'=>20],
-    ['title'=>'Getränke',           'slug'=>'getraenke',          'full_slug'=>'ds-getraenke-list',                'url'=>$SITE_URL.'/ds-getraenke-list/',                'icon'=>'🍺','suffix'=>'list',     'sort_order'=>30],
-    ['title'=>'Speisekarte',        'slug'=>'essen',              'full_slug'=>'ds-essen-list',                    'url'=>$SITE_URL.'/ds-essen-list/',                    'icon'=>'🍔','suffix'=>'list',     'sort_order'=>40],
-    ['title'=>'Burger Highlight',   'slug'=>'burger',             'full_slug'=>'ds-burger-highlight',              'url'=>$SITE_URL.'/ds-burger-highlight/',              'icon'=>'🍔','suffix'=>'highlight','sort_order'=>10],
-    ['title'=>'Öffnungszeiten',     'slug'=>'oeffnungszeiten',    'full_slug'=>'ds-oeffnungszeiten-portrait',      'url'=>$SITE_URL.'/ds-oeffnungszeiten-portrait/',      'icon'=>'🕐','suffix'=>'portrait', 'sort_order'=>10],
-    ['title'=>'Instagram Grid',     'slug'=>'insta',              'full_slug'=>'ds-insta-portrait',                'url'=>$SITE_URL.'/ds-insta-portrait/',                'icon'=>'📸','suffix'=>'portrait', 'sort_order'=>20],
-    ['title'=>'Instagram Reels',    'slug'=>'insta-reel',         'full_slug'=>'ds-insta-reel-portrait',           'url'=>$SITE_URL.'/ds-insta-reel-portrait/',           'icon'=>'🎥','suffix'=>'portrait', 'sort_order'=>30],
+    ['title'=>'Starter Pack',     'slug'=>'starter-pack',    'full_slug'=>'ds-starter-pack-landscape',   'url'=>$SITE_URL.'/ds-starter-pack-landscape/',   'icon'=>'🏄','suffix'=>'landscape','sort_order'=>10],
+    ['title'=>'Wetter',           'slug'=>'wetter',          'full_slug'=>'ds-wetter-landscape',         'url'=>$SITE_URL.'/ds-wetter-landscape/',         'icon'=>'🌤','suffix'=>'landscape','sort_order'=>20],
+    ['title'=>'Wind Map',         'slug'=>'windmap',         'full_slug'=>'ds-windmap-landscape',        'url'=>$SITE_URL.'/ds-windmap-landscape/',        'icon'=>'💨','suffix'=>'landscape','sort_order'=>30],
+    ['title'=>'Tickets / Cable',  'slug'=>'tickets',         'full_slug'=>'ds-tickets-landscape',        'url'=>$SITE_URL.'/ds-tickets-landscape/',        'icon'=>'🏄','suffix'=>'landscape','sort_order'=>40],
+    ['title'=>'Park',             'slug'=>'park',            'full_slug'=>'ds-park-landscape',           'url'=>$SITE_URL.'/ds-park-landscape/',           'icon'=>'🌊','suffix'=>'landscape','sort_order'=>50],
+    ['title'=>'Kino',             'slug'=>'kino',            'full_slug'=>'ds-kino-landscape',           'url'=>$SITE_URL.'/ds-kino-landscape/',           'icon'=>'🎦','suffix'=>'landscape','sort_order'=>60],
+    ['title'=>'Cable Preisliste', 'slug'=>'cable',           'full_slug'=>'ds-cable-list',               'url'=>$SITE_URL.'/ds-cable-list/',               'icon'=>'🎫','suffix'=>'list',     'sort_order'=>10],
+    ['title'=>'Eiskarte',         'slug'=>'eis',             'full_slug'=>'ds-eis-list',                 'url'=>$SITE_URL.'/ds-eis-list/',                 'icon'=>'🍦','suffix'=>'list',     'sort_order'=>20],
+    ['title'=>'Getränke',         'slug'=>'getraenke',      'full_slug'=>'ds-getraenke-list',           'url'=>$SITE_URL.'/ds-getraenke-list/',           'icon'=>'🍺','suffix'=>'list',     'sort_order'=>30],
+    ['title'=>'Speisekarte',      'slug'=>'essen',           'full_slug'=>'ds-essen-list',               'url'=>$SITE_URL.'/ds-essen-list/',               'icon'=>'🍔','suffix'=>'list',     'sort_order'=>40],
+    ['title'=>'Burger Highlight', 'slug'=>'burger',          'full_slug'=>'ds-burger-highlight',         'url'=>$SITE_URL.'/ds-burger-highlight/',         'icon'=>'🍔','suffix'=>'highlight','sort_order'=>10],
+    ['title'=>'Öffnungszeiten',   'slug'=>'oeffnungszeiten','full_slug'=>'ds-oeffnungszeiten-portrait', 'url'=>$SITE_URL.'/ds-oeffnungszeiten-portrait/', 'icon'=>'🕐','suffix'=>'portrait', 'sort_order'=>10],
+    ['title'=>'Instagram Grid',   'slug'=>'insta',           'full_slug'=>'ds-insta-portrait',           'url'=>$SITE_URL.'/ds-insta-portrait/',           'icon'=>'📸','suffix'=>'portrait', 'sort_order'=>20],
+    ['title'=>'Instagram Reels',  'slug'=>'insta-reel',      'full_slug'=>'ds-insta-reel-portrait',      'url'=>$SITE_URL.'/ds-insta-reel-portrait/',      'icon'=>'🎥','suffix'=>'portrait', 'sort_order'=>30],
 ];
 
 $raw_seiten = !empty($wp_seiten) ? $wp_seiten : $fallback_seiten;
 $using_wp   = !empty($wp_seiten);
 
-// ── Gruppen aufbauen ────────────────────────────────────────────────────────
 $gruppen = [];
 foreach ($raw_seiten as $s) {
     $sfx = isset($s['suffix']) ? $s['suffix'] : $DEFAULT_SUFFIX;
@@ -174,29 +149,21 @@ foreach ($raw_seiten as $s) {
     }
     $gruppen[$sfx]['seiten'][] = $s;
 }
-
-// Jede Gruppe nach sort_order sortieren
 foreach ($gruppen as &$g) {
     usort($g['seiten'], function($a,$b){
-        $ao = isset($a['sort_order']) ? $a['sort_order'] : 9999;
-        $bo = isset($b['sort_order']) ? $b['sort_order'] : 9999;
-        return $ao - $bo;
+        return ($a['sort_order']??9999) - ($b['sort_order']??9999);
     });
 }
 unset($g);
-
-// Gruppen-Reihenfolge nach SUFFIX_MAP-Reihenfolge (definierte zuerst)
 $ordered_gruppen = [];
 foreach (array_keys($SUFFIX_MAP) as $sfx) {
     if (isset($gruppen[$sfx])) $ordered_gruppen[$sfx] = $gruppen[$sfx];
 }
-// Dynamische Gruppen die nicht in SUFFIX_MAP stehen, hinten anhängen
 foreach ($gruppen as $sfx => $g) {
     if (!isset($ordered_gruppen[$sfx])) $ordered_gruppen[$sfx] = $g;
 }
 $gruppen = $ordered_gruppen;
 
-// ── DB Status Check ─────────────────────────────────────────────────────────
 function wcr_ds_check_status(array $rule, PDO $pdo, array $allowed_tables): array {
     $tables  = array_values(array_intersect((array)($rule['tables'] ?? []), $allowed_tables));
     $typ     = trim($rule['typ'] ?? '');
@@ -271,7 +238,6 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['wcr_ds_save'])) {
     }
 }
 
-// Neues Suffix speichern
 $suffix_save_msg = '';
 if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['wcr_suffix_save'])) {
     wcr_require('view_ds');
@@ -279,8 +245,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['wcr_suffix_save'])) {
     $new_key   = preg_replace('/[^a-z0-9_\-]/','',strtolower($_POST['suffix_key']??''));
     $new_label = trim(strip_tags($_POST['suffix_label']??''));
     $new_port  = isset($_POST['suffix_portrait']) ? true : false;
-    $new_w     = in_array((int)($_POST['suffix_w']??1920),[1920,1080])?   (int)$_POST['suffix_w']:1920;
-    $new_h     = in_array((int)($_POST['suffix_h']??1080),[1080,1920])?   (int)$_POST['suffix_h']:1080;
+    $new_w     = in_array((int)($_POST['suffix_w']??1920),[1920,1080])?(int)$_POST['suffix_w']:1920;
+    $new_h     = in_array((int)($_POST['suffix_h']??1080),[1080,1920])?(int)$_POST['suffix_h']:1080;
     if ($new_key!=='' && $new_label!=='') {
         $suffix_config['suffixes'][$new_key] = [
             'label'   => $new_label,
@@ -310,6 +276,18 @@ $ds_count=count($alle_seiten);
 <meta charset="UTF-8">
 <title>Verwaltung: <?= htmlspecialchars($PAGE_TITLE,ENT_QUOTES,'UTF-8') ?></title>
 <style>
+/* ── Settings Popup ─────────────────────────────────────────────────────── */
+.settings-btn{display:inline-flex;align-items:center;gap:6px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px;color:#374151;font-size:.85rem;font-weight:600;padding:6px 14px;cursor:pointer;transition:background .15s;text-decoration:none;margin-left:8px;}
+.settings-btn:hover{background:#e5e7eb;}
+.settings-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;align-items:center;justify-content:center;}
+.settings-overlay.open{display:flex;}
+.settings-modal{background:#fff;border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,.25);width:min(900px,95vw);height:min(88vh,820px);display:flex;flex-direction:column;overflow:hidden;}
+.settings-modal-header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #e5e7eb;background:#f9fafb;flex-shrink:0;}
+.settings-modal-header h2{font-size:.95rem;font-weight:700;margin:0;display:flex;align-items:center;gap:7px;}
+.settings-close{background:none;border:none;font-size:1.3rem;cursor:pointer;color:#6b7280;padding:4px 8px;border-radius:6px;line-height:1;}
+.settings-close:hover{background:#f3f4f6;color:#111;}
+.settings-modal iframe{flex:1;border:none;width:100%;}
+/* ── Rest ─────────────────────────────────────────────────────────────────── */
 .ds-source-badge{display:inline-flex;align-items:center;gap:5px;font-size:.72rem;font-weight:600;padding:3px 10px;border-radius:20px;margin-left:8px;}
 .ds-source-badge.wp{background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;}
 .ds-source-badge.fb{background:#fff3e0;color:#e65100;border:1px solid #ffcc80;}
@@ -377,13 +355,27 @@ $ds_count=count($alle_seiten);
 <body class="bo" data-csrf="<?= wcr_csrf_attr() ?>">
 <?php include __DIR__ . '/../inc/menu.php'; ?>
 
+<!-- ── Settings Popup ────────────────────────────────────────────────────── -->
+<div class="settings-overlay" id="settingsOverlay" onclick="if(event.target===this)closeSettings()">
+  <div class="settings-modal">
+    <div class="settings-modal-header">
+      <h2>⚙️ DS-Seiten Sync &amp; Einstellungen</h2>
+      <button class="settings-close" onclick="closeSettings()">✕</button>
+    </div>
+    <iframe id="settingsFrame" src="" title="DS Sync"></iframe>
+  </div>
+</div>
+
 <div class="header-controls">
   <h1>🖥 <?= htmlspecialchars($PAGE_TITLE,ENT_QUOTES,'UTF-8') ?>
     <span class="ds-source-badge <?= $using_wp?'wp':'fb' ?>">
       <?= $using_wp ? '🐙 WordPress ('.count($alle_seiten).' Seiten)' : '⚠️ Fallback-Liste' ?>
     </span>
   </h1>
-  <button class="btn-upload" onclick="dsReloadAll()">↺ Alle neu laden</button>
+  <div style="display:flex;align-items:center;gap:8px;">
+    <button class="btn-upload" onclick="dsReloadAll()">&#8635; Alle neu laden</button>
+    <button class="settings-btn" onclick="openSettings()">⚙️ Sync &amp; Settings</button>
+  </div>
 </div>
 
 <?php if (!$using_wp): ?>
@@ -391,15 +383,14 @@ $ds_count=count($alle_seiten);
   <?php if ($api_error): ?>
     🔴 <strong>REST API Fehler:</strong> <code><?= htmlspecialchars($api_error,ENT_QUOTES,'UTF-8') ?></code>
   <?php else: ?>
-    ⚠️ <strong>REST API OK</strong> (<?= (int)$api_total ?> Seiten) — kein Slug mit <code>ds-</code> Prefix.<br>
-    Schema: <code>ds-{name}-{suffix}</code> z.B. <code>ds-wetter-landscape</code>, <code>ds-eis-list</code>, <code>ds-insta-portrait</code>
+    ⚠️ <strong>REST API OK</strong> (<?= (int)$api_total ?> Seiten) — kein Slug mit <code>ds-</code> Prefix.
   <?php endif; ?>
 </div>
 <?php endif; ?>
 
 <?php if ($save_msg): ?><div class="save-notice"><?= htmlspecialchars($save_msg,ENT_QUOTES,'UTF-8') ?></div><?php endif; ?>
 
-<!-- ── Suffix Manager ── -->
+<!-- Suffix Manager -->
 <div class="ds-suffix-manager">
   <h3>🏷️ Suffix-Gruppen <small style="font-weight:400;color:#9ca3af;margin-left:4px;">be/inc/ds-suffixes.json</small></h3>
   <div class="ds-suffix-list">
@@ -407,7 +398,7 @@ $ds_count=count($alle_seiten);
     <span class="ds-suffix-chip">
       <?= htmlspecialchars($cfg['label'],ENT_QUOTES,'UTF-8') ?>
       <code><?= htmlspecialchars($sfx,ENT_QUOTES,'UTF-8') ?></code>
-      <span style="font-size:.65rem;color:#9ca3af;"><?= (int)($cfg['w']??1920) ?>×<?= (int)($cfg['h']??1080) ?><?= !empty($cfg['portrait'])?'  📱':'' ?></span>
+      <span style="font-size:.65rem;color:#9ca3af;"><?= (int)($cfg['w']??1920) ?>×<?= (int)($cfg['h']??1080) ?><?= !empty($cfg['portrait'])?' 📱':'' ?></span>
     </span>
     <?php endforeach; ?>
   </div>
@@ -561,6 +552,21 @@ function toggleRule(i){
   var p=document.getElementById('rule-panel-'+i);
   if(p)p.classList.toggle('open');
 }
+// ── Settings Popup ──
+function openSettings(){
+  var overlay=document.getElementById('settingsOverlay');
+  var frame=document.getElementById('settingsFrame');
+  if(!frame.src||frame.src==='about:blank'||frame.src===''){
+    frame.src='ds-sync.php';
+  }
+  overlay.classList.add('open');
+  document.body.style.overflow='hidden';
+}
+function closeSettings(){
+  document.getElementById('settingsOverlay').classList.remove('open');
+  document.body.style.overflow='';
+}
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeSettings();});
 document.addEventListener('DOMContentLoaded',function(){
   document.querySelectorAll('.ds-frame-wrap').forEach(function(w){ro.observe(w);dsScaleWrap(w);});
   setTimeout(function(){
