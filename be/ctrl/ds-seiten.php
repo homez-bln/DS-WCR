@@ -1,7 +1,7 @@
 <?php
 /**
  * ctrl/ds-seiten.php — DS-Seiten Vorschau + Aktivierungssteuerung
- * v5.2: Settings-Popup via nativer <dialog> + PHP-Partial (kein iFrame)
+ * v5.3: Settings-Button öffnet ds-sync.php in iFrame-Overlay
  */
 require_once __DIR__ . '/../inc/auth.php';
 require_once __DIR__ . '/../inc/db.php';
@@ -122,7 +122,7 @@ $fallback_seiten = [
     ['title'=>'Kino',             'slug'=>'kino',            'full_slug'=>'ds-kino-landscape',           'url'=>$SITE_URL.'/ds-kino-landscape/',           'icon'=>'🎦','suffix'=>'landscape','sort_order'=>60],
     ['title'=>'Cable Preisliste', 'slug'=>'cable',           'full_slug'=>'ds-cable-list',               'url'=>$SITE_URL.'/ds-cable-list/',               'icon'=>'🎫','suffix'=>'list',     'sort_order'=>10],
     ['title'=>'Eiskarte',         'slug'=>'eis',             'full_slug'=>'ds-eis-list',                 'url'=>$SITE_URL.'/ds-eis-list/',                 'icon'=>'🍦','suffix'=>'list',     'sort_order'=>20],
-    ['title'=>'Getränke',         'slug'=>'getraenke',      'full_slug'=>'ds-getraenke-list',           'url'=>$SITE_URL.'/ds-getraenke-list/',           'icon'=>'🍺','suffix'=>'list',     'sort_order'=>30],
+    ['title'=>'Getränke',         'slug'=>'getraenke',       'full_slug'=>'ds-getraenke-list',           'url'=>$SITE_URL.'/ds-getraenke-list/',           'icon'=>'🍺','suffix'=>'list',     'sort_order'=>30],
     ['title'=>'Speisekarte',      'slug'=>'essen',           'full_slug'=>'ds-essen-list',               'url'=>$SITE_URL.'/ds-essen-list/',               'icon'=>'🍔','suffix'=>'list',     'sort_order'=>40],
     ['title'=>'Burger Highlight', 'slug'=>'burger',          'full_slug'=>'ds-burger-highlight',         'url'=>$SITE_URL.'/ds-burger-highlight/',         'icon'=>'🍔','suffix'=>'highlight','sort_order'=>10],
     ['title'=>'Öffnungszeiten',   'slug'=>'oeffnungszeiten','full_slug'=>'ds-oeffnungszeiten-portrait', 'url'=>$SITE_URL.'/ds-oeffnungszeiten-portrait/', 'icon'=>'🕐','suffix'=>'portrait', 'sort_order'=>10],
@@ -276,64 +276,41 @@ $ds_count=count($alle_seiten);
 <meta charset="UTF-8">
 <title>Verwaltung: <?= htmlspecialchars($PAGE_TITLE,ENT_QUOTES,'UTF-8') ?></title>
 <style>
-/* ── Settings Dialog ─────────────────────────────────────────────────────── */
-dialog#settingsDialog{
-  border:none;border-radius:16px;padding:0;
+/* ── Sync-Popup ─────────────────────────────────────────────────────────── */
+#sync-overlay{
+  display:none;position:fixed;inset:0;z-index:9999;
+  background:rgba(0,0,0,.55);backdrop-filter:blur(3px);
+  align-items:center;justify-content:center;
+}
+#sync-overlay.open{display:flex;}
+#sync-popup{
+  background:#fff;border-radius:16px;overflow:hidden;
   box-shadow:0 24px 80px rgba(0,0,0,.28);
-  width:min(920px,95vw);max-height:90vh;
-  overflow:hidden;display:flex;flex-direction:column;
+  width:min(960px,95vw);height:min(88vh,860px);
+  display:flex;flex-direction:column;
 }
-dialog#settingsDialog::backdrop{
-  background:rgba(0,0,0,.55);
-  backdrop-filter:blur(3px);
-}
-.settings-dialog-header{
+#sync-popup-header{
   display:flex;align-items:center;justify-content:space-between;
-  padding:14px 20px;border-bottom:1px solid #e5e7eb;background:#f9fafb;flex-shrink:0;
+  padding:12px 18px;border-bottom:1px solid #e5e7eb;background:#f9fafb;flex-shrink:0;
 }
-.settings-dialog-header h2{font-size:.95rem;font-weight:700;margin:0;display:flex;align-items:center;gap:7px;}
-.settings-close{background:none;border:none;font-size:1.3rem;cursor:pointer;color:#6b7280;padding:4px 8px;border-radius:6px;line-height:1;}
-.settings-close:hover{background:#f3f4f6;color:#111;}
-.settings-body{
-  overflow-y:auto;padding:20px 24px;flex:1;
+#sync-popup-header h2{margin:0;font-size:.92rem;font-weight:700;display:flex;align-items:center;gap:7px;}
+#sync-popup-close{
+  background:none;border:none;font-size:1.25rem;cursor:pointer;
+  color:#6b7280;padding:4px 8px;border-radius:6px;line-height:1;
 }
-/* Partial-Styles werden hier eingebettet (kein doppeltes Stylesheet-Laden) */
-.sync-card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 22px;margin-bottom:20px;}
-.sync-card h2{font-size:.92rem;font-weight:700;margin:0 0 12px;display:flex;align-items:center;gap:8px;}
-.sp-form-row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px;}
-.sp-form-row label{font-size:.8rem;font-weight:600;color:#374151;display:flex;flex-direction:column;gap:3px;}
-.sp-form-row input{border:1px solid #d1d5db;border-radius:6px;padding:6px 10px;font-size:.83rem;min-width:180px;}
-.sp-btn-primary{background:#0071e3;color:#fff;border:none;border-radius:8px;padding:7px 18px;font-size:.83rem;font-weight:600;cursor:pointer;}
-.sp-btn-primary:hover{background:#005bb5;}
-.sp-btn-sync{background:#059669;color:#fff;border:none;border-radius:10px;padding:9px 0;font-size:.92rem;font-weight:700;cursor:pointer;width:100%;}
-.sp-btn-sync:hover{background:#047857;}
-.sp-btn-sync:disabled{background:#9ca3af;cursor:not-allowed;}
-.sp-notice{padding:9px 14px;border-radius:8px;font-size:.8rem;margin-bottom:10px;}
-.sp-notice.ok{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;font-weight:600;}
-.sp-notice.err{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;font-weight:600;}
-.sp-notice.warn{background:#fef3c7;color:#92400e;border:1px solid #fcd34d;}
-.sp-summary{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
-.sp-chip{border-radius:8px;padding:5px 12px;font-size:.78rem;font-weight:700;}
-.sp-chip.c{background:#d1fae5;color:#065f46;}
-.sp-chip.s{background:#f0f9ff;color:#0369a1;}
-.sp-chip.e{background:#fee2e2;color:#991b1b;}
-.sp-log-item{display:flex;gap:10px;padding:4px 0;border-bottom:1px solid #f3f4f6;font-size:.76rem;align-items:flex-start;}
-.sp-slug{font-family:monospace;min-width:220px;color:#374151;}
-.sp-msg{color:#6b7280;}
-.sp-log-item.created .sp-msg{color:#059669;font-weight:600;}
-.sp-log-item.error   .sp-msg{color:#dc2626;font-weight:600;}
-.sp-log-item.skip    .sp-msg{color:#9ca3af;}
-.sp-preview-table{width:100%;border-collapse:collapse;font-size:.76rem;}
-.sp-preview-table th{text-align:left;padding:5px 9px;background:#f3f4f6;font-weight:700;color:#6b7280;border-bottom:2px solid #e5e7eb;}
-.sp-preview-table td{padding:5px 9px;border-bottom:1px solid #f3f4f6;vertical-align:top;}
-.sp-badge{display:inline-block;font-size:.64rem;font-weight:700;padding:2px 6px;border-radius:10px;white-space:nowrap;}
-.sp-badge.static{background:#dbeafe;color:#1e40af;}
-.sp-badge.list{background:#d1fae5;color:#065f46;}
-.sp-badge.highlight{background:#fef3c7;color:#92400e;}
-/* ── Settings Button ─────────── */
-.settings-btn{display:inline-flex;align-items:center;gap:6px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px;color:#374151;font-size:.85rem;font-weight:600;padding:6px 14px;cursor:pointer;transition:background .15s;text-decoration:none;margin-left:8px;}
+#sync-popup-close:hover{background:#f3f4f6;color:#111;}
+#sync-iframe{
+  flex:1;border:none;width:100%;display:block;
+}
+/* ── Settings Button ───────────────────────────────────────────────────── */
+.settings-btn{
+  display:inline-flex;align-items:center;gap:6px;
+  background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px;
+  color:#374151;font-size:.85rem;font-weight:600;
+  padding:6px 14px;cursor:pointer;transition:background .15s;
+}
 .settings-btn:hover{background:#e5e7eb;}
-/* ── Rest ─────────────────────────────────────────────────────────────────── */
+/* ── Rest (unverändert) ─────────────────────────────────────────────────── */
 .ds-source-badge{display:inline-flex;align-items:center;gap:5px;font-size:.72rem;font-weight:600;padding:3px 10px;border-radius:20px;margin-left:8px;}
 .ds-source-badge.wp{background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;}
 .ds-source-badge.fb{background:#fff3e0;color:#e65100;border:1px solid #ffcc80;}
@@ -401,20 +378,16 @@ dialog#settingsDialog::backdrop{
 <body class="bo" data-csrf="<?= wcr_csrf_attr() ?>">
 <?php include __DIR__ . '/../inc/menu.php'; ?>
 
-<!-- ── Settings Dialog (native <dialog>, kein iFrame) ────────────────────── -->
-<dialog id="settingsDialog" aria-modal="true" aria-label="DS-Seiten Sync & Einstellungen">
-  <div class="settings-dialog-header">
-    <h2>⚙️ DS-Seiten Sync &amp; Einstellungen</h2>
-    <button class="settings-close" onclick="closeSettings()" title="Schließen">✕</button>
+<!-- ── Sync-Popup (iFrame → ds-sync.php) ─────────────────────────────────── -->
+<div id="sync-overlay" onclick="if(event.target===this)closeSyncPopup()">
+  <div id="sync-popup">
+    <div id="sync-popup-header">
+      <h2>⚙️ DS-Seiten Sync</h2>
+      <button id="sync-popup-close" onclick="closeSyncPopup()" title="Schließen">✕</button>
+    </div>
+    <iframe id="sync-iframe" src="" title="DS-Seiten Sync"></iframe>
   </div>
-  <div class="settings-body">
-    <?php
-      // Partial einbinden — eine Session, ein CSRF-Token, kein iFrame
-      define('WCR_DS_PARTIAL', true);
-      include __DIR__ . '/../inc/ds-sync-partial.php';
-    ?>
-  </div>
-</dialog>
+</div>
 
 <div class="header-controls">
   <h1>🖥 <?= htmlspecialchars($PAGE_TITLE,ENT_QUOTES,'UTF-8') ?>
@@ -424,7 +397,7 @@ dialog#settingsDialog::backdrop{
   </h1>
   <div style="display:flex;align-items:center;gap:8px;">
     <button class="btn-upload" onclick="dsReloadAll()">&#8635; Alle neu laden</button>
-    <button class="settings-btn" onclick="openSettings()">⚙️ Sync &amp; Settings</button>
+    <button class="settings-btn" onclick="openSyncPopup()">⚙️ Sync &amp; Settings</button>
   </div>
 </div>
 
@@ -602,29 +575,26 @@ function toggleRule(i){
   var p=document.getElementById('rule-panel-'+i);
   if(p)p.classList.toggle('open');
 }
-// ── Settings Dialog (native <dialog>) ──
-function openSettings(){
-  var d=document.getElementById('settingsDialog');
-  if(d&&d.showModal)d.showModal();
+// ── Sync-Popup ──────────────────────────────────────────────────────────────
+var SYNC_URL='ds-sync.php';
+function openSyncPopup(){
+  var ov=document.getElementById('sync-overlay');
+  var fr=document.getElementById('sync-iframe');
+  if(!ov||!fr)return;
+  if(!fr.src||fr.src===window.location.href||fr.getAttribute('src')===''){
+    fr.src=SYNC_URL;
+  }
+  ov.classList.add('open');
+  document.body.style.overflow='hidden';
 }
-function closeSettings(){
-  var d=document.getElementById('settingsDialog');
-  if(d)d.close();
+function closeSyncPopup(){
+  var ov=document.getElementById('sync-overlay');
+  if(ov)ov.classList.remove('open');
+  document.body.style.overflow='';
 }
-// ESC schliesst native <dialog> automatisch — zusaetzlich body-overflow steuern
-var dlg=document.getElementById('settingsDialog');
-if(dlg){
-  dlg.addEventListener('close',function(){
-    document.body.style.overflow='';
-  });
-  dlg.addEventListener('click',function(e){
-    // Klick auf Backdrop (ausserhalb des Dialogs) schliesst
-    var r=dlg.getBoundingClientRect();
-    if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom){
-      dlg.close();
-    }
-  });
-}
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape')closeSyncPopup();
+});
 document.addEventListener('DOMContentLoaded',function(){
   document.querySelectorAll('.ds-frame-wrap').forEach(function(w){ro.observe(w);dsScaleWrap(w);});
   setTimeout(function(){
@@ -635,23 +605,6 @@ document.addEventListener('DOMContentLoaded',function(){
       f.src=f.dataset.src;
     });
   },200);
-  // Sync-Form: Popup offen lassen nach Submit (kein Dialog-Close)
-  var syncForm=document.querySelector('#settingsDialog form[action], #settingsDialog form');
-  // Forms im Dialog submitten normal — Dialog bleibt offen, PHP-Response refresh
-  // Wenn Sync ausgefuehrt, Seite neu laden damit Log sichtbar
-  var syncBtn=document.querySelector('.sp-btn-sync');
-  if(syncBtn){
-    syncBtn.closest('form') && syncBtn.closest('form').addEventListener('submit',function(){
-      // Nach PRG-freiem Sync (Partial hat keinen redirect) bleibt Dialog offen
-      // Body-Scroll gesperrt waehrend Dialog offen
-      document.body.style.overflow='hidden';
-    });
-  }
-  // Dialog oeffnen wenn Sync-Result vorhanden (nach Form-Submit)
-  <?php if (!empty($sync_result) || (isset($_sync_done) && $_sync_done)): ?>
-  var d=document.getElementById('settingsDialog');
-  if(d&&d.showModal)d.showModal();
-  <?php endif; ?>
 });
 </script>
 <?php include __DIR__ . '/../inc/debug.php'; ?>
