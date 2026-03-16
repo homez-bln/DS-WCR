@@ -1,7 +1,7 @@
 <?php
 /**
  * ctrl/ds-seiten.php — DS-Seiten Vorschau + Aktivierungssteuerung
- * v4: WP REST API statt direktem DB-Zugriff
+ * v4.1: WP REST API, PHP 7 kompatibel
  */
 require_once __DIR__ . '/../inc/auth.php';
 require_once __DIR__ . '/../inc/db.php';
@@ -41,36 +41,41 @@ function wcr_ds_load_wp_pages_api(string $api_base, string $slug_pre, string $si
     ]);
 
     $raw = @file_get_contents($url, false, $ctx);
-    if ($raw === false) return ['pages' => [], 'error' => 'HTTP-Anfrage fehlgeschlagen (file_get_contents)'];
+    if ($raw === false) {
+        return ['pages' => [], 'error' => 'HTTP-Anfrage fehlgeschlagen (allow_url_fopen?)'];
+    }
 
-    // HTTP-Statuscode prüfen
     $http_code = 0;
     if (!empty($http_response_header)) {
         preg_match('/HTTP\/\S+\s+(\d+)/', $http_response_header[0], $m);
         $http_code = (int)($m[1] ?? 0);
     }
     if ($http_code !== 200) {
-        return ['pages' => [], 'error' => "REST API HTTP {$http_code}", 'raw' => substr($raw, 0, 300)];
+        return ['pages' => [], 'error' => 'REST API HTTP ' . $http_code, 'raw' => substr($raw, 0, 300)];
     }
 
     $data = json_decode($raw, true);
-    if (!is_array($data)) return ['pages' => [], 'error' => 'JSON-Decode fehlgeschlagen'];
+    if (!is_array($data)) {
+        return ['pages' => [], 'error' => 'JSON-Decode fehlgeschlagen'];
+    }
 
     $result = [];
     foreach ($data as $p) {
-        $slug = $p['slug'] ?? '';
-        if (!str_starts_with($slug, $slug_pre)) continue;
+        $slug = isset($p['slug']) ? $p['slug'] : '';
+        // PHP 7 kompatibel: kein str_starts_with
+        if (strpos($slug, $slug_pre) !== 0) continue;
 
         $short = substr($slug, strlen($slug_pre));
-        $title = $p['title']['rendered'] ?? $slug;
+        $title = isset($p['title']['rendered']) ? $p['title']['rendered'] : $slug;
         $title = strip_tags(html_entity_decode($title, ENT_QUOTES, 'UTF-8'));
 
-        // Custom Fields: zuerst ACF, dann meta
-        $acf    = $p['acf']  ?? [];
-        $meta   = $p['meta'] ?? [];
-        $gruppe = $acf['ds_gruppe']   ?? $meta['ds_gruppe']   ?? 'landscape';
-        $icon   = $acf['ds_icon']     ?? $meta['ds_icon']     ?? '📱';
-        $port   = ($acf['ds_portrait'] ?? $meta['ds_portrait'] ?? '') === '1';
+        $acf    = isset($p['acf'])  && is_array($p['acf'])  ? $p['acf']  : [];
+        $meta   = isset($p['meta']) && is_array($p['meta']) ? $p['meta'] : [];
+
+        $gruppe = !empty($acf['ds_gruppe'])   ? $acf['ds_gruppe']   : (!empty($meta['ds_gruppe'])   ? $meta['ds_gruppe']   : 'landscape');
+        $icon   = !empty($acf['ds_icon'])     ? $acf['ds_icon']     : (!empty($meta['ds_icon'])     ? $meta['ds_icon']     : '📱');
+        $port_v = !empty($acf['ds_portrait']) ? $acf['ds_portrait'] : (!empty($meta['ds_portrait']) ? $meta['ds_portrait'] : '0');
+        $port   = ($port_v === '1' || $port_v === 1 || $port_v === true);
 
         $result[] = [
             'title'    => $title,
@@ -79,16 +84,16 @@ function wcr_ds_load_wp_pages_api(string $api_base, string $slug_pre, string $si
             'icon'     => $icon ?: '📱',
             'gruppe'   => $gruppe ?: 'landscape',
             'portrait' => $port,
-            'wp_id'    => $p['id'] ?? 0,
+            'wp_id'    => isset($p['id']) ? (int)$p['id'] : 0,
         ];
     }
     return ['pages' => $result, 'total_wp' => count($data)];
 }
 
 $api_result = wcr_ds_load_wp_pages_api($WP_API_BASE, $DS_SLUG_PRE, $SITE_URL);
-$wp_seiten  = $api_result['pages'] ?? [];
-$api_error  = $api_result['error'] ?? null;
-$api_total  = $api_result['total_wp'] ?? null;
+$wp_seiten  = $api_result['pages'];
+$api_error  = isset($api_result['error']) ? $api_result['error'] : null;
+$api_total  = isset($api_result['total_wp']) ? $api_result['total_wp'] : null;
 
 // ── Fallback-Liste ──
 $fallback_seiten = [
@@ -130,11 +135,11 @@ foreach ($gruppen_def as $gkey => $gdef) {
     $gruppen[$gkey] = ['label' => $gdef['label'], 'portrait' => $gdef['portrait'], 'seiten' => []];
 }
 foreach ($raw_seiten as $s) {
-    $gkey = $s['gruppe'] ?? 'landscape';
+    $gkey = isset($s['gruppe']) ? $s['gruppe'] : 'landscape';
     if (!isset($gruppen[$gkey])) $gkey = 'landscape';
     $gruppen[$gkey]['seiten'][] = $s;
 }
-$gruppen = array_filter($gruppen, fn($g) => !empty($g['seiten']));
+$gruppen = array_filter($gruppen, function($g){ return !empty($g['seiten']); });
 
 function wcr_ds_check_status(array $rule, PDO $pdo, array $allowed_tables): array {
     $tables  = array_values(array_intersect((array)($rule['tables'] ?? []), $allowed_tables));
@@ -185,7 +190,7 @@ foreach ($gruppen as &$g) {
     foreach ($g['seiten'] as &$s) {
         $s['_idx'] = count($alle_seiten);
         $s['portrait'] = $g['portrait'];
-        $rule = $rules[$s['slug']] ?? ['override'=>'auto','tables'=>[],'typ'=>'','ids'=>'','mode'=>'any'];
+        $rule = isset($rules[$s['slug']]) ? $rules[$s['slug']] : ['override'=>'auto','tables'=>[],'typ'=>'','ids'=>'','mode'=>'any'];
         $s['rule']   = $rule;
         $s['status'] = wcr_ds_check_status($rule, $pdo, $ALLOWED_TABLES);
         $alle_seiten[] = &$s;
@@ -300,11 +305,11 @@ $ds_count = count($alle_seiten);
 <div class="ds-info-box <?= $api_error ? 'err' : 'warn' ?>">
   <?php if ($api_error): ?>
     🔴 <strong>REST API Fehler:</strong> <code><?= htmlspecialchars($api_error, ENT_QUOTES, 'UTF-8') ?></code><br>
-    <small>Geprüfte URL: <code><?= htmlspecialchars($WP_API_BASE . '/pages?...', ENT_QUOTES, 'UTF-8') ?></code></small>
+    <small>URL: <code><?= htmlspecialchars($WP_API_BASE . '/pages?per_page=100&...', ENT_QUOTES, 'UTF-8') ?></code></small>
   <?php else: ?>
     ⚠️ <strong>REST API erreichbar</strong> (<?= (int)$api_total ?> Seiten total)
-    — aber keine Seite hat Slug-Prefix <code>ds-</code>.<br>
-    Bitte in WP Admin: Seite bearbeiten → Permalink → Slug auf <code>ds-seitenname</code> setzen.
+    — keine Seite hat Slug-Prefix <code>ds-</code>.<br>
+    WP Admin → Seite bearbeiten → Permalink → Slug auf <code>ds-seitenname</code> setzen.
   <?php endif; ?>
 </div>
 <?php endif; ?>
@@ -329,7 +334,7 @@ $ds_count = count($alle_seiten);
       $i        = $s['_idx'];
       $status   = $s['status'];
       $rule     = $s['rule'];
-      $ov       = $rule['override'] ?? 'auto';
+      $ov       = isset($rule['override']) ? $rule['override'] : 'auto';
       $effektiv = ($ov === 'force_on') ? true : (($ov === 'force_off') ? false : $status['active']);
       $bc       = $effektiv ? '#00c853' : '#ff3b30';
       $bt       = $effektiv ? 'Aktiv' : 'Inaktiv';
@@ -367,18 +372,18 @@ $ds_count = count($alle_seiten);
             <div class="rule-cb-group">
               <?php foreach ($ALLOWED_TABLES as $tbl): ?>
               <label><input type="checkbox" name="tables[]" value="<?= htmlspecialchars($tbl,ENT_QUOTES,'UTF-8') ?>"
-                <?= in_array($tbl,(array)($rule['tables']??[]),true)?'checked':'' ?>>
+                <?= in_array($tbl,(array)(isset($rule['tables'])?$rule['tables']:[]),true)?'checked':'' ?>>
                 <?= htmlspecialchars($tbl,ENT_QUOTES,'UTF-8') ?></label>
               <?php endforeach; ?></div></div>
           <div class="rule-row"><label>Typ</label>
-            <input type="text" name="typ" value="<?= htmlspecialchars($rule['typ']??'',ENT_QUOTES,'UTF-8') ?>" list="typen-list" placeholder="z.B. Burger …">
+            <input type="text" name="typ" value="<?= htmlspecialchars(isset($rule['typ'])?$rule['typ']:'',ENT_QUOTES,'UTF-8') ?>" list="typen-list" placeholder="z.B. Burger …">
             <datalist id="typen-list"><?php foreach($typen_all as $tv):?><option value="<?= htmlspecialchars($tv,ENT_QUOTES,'UTF-8') ?>"><?php endforeach;?></datalist></div>
           <div class="rule-row"><label>IDs</label>
-            <input type="text" name="ids" value="<?= htmlspecialchars($rule['ids']??'',ENT_QUOTES,'UTF-8') ?>" placeholder="3010,3089"></div>
+            <input type="text" name="ids" value="<?= htmlspecialchars(isset($rule['ids'])?$rule['ids']:'',ENT_QUOTES,'UTF-8') ?>" placeholder="3010,3089"></div>
           <div class="rule-row"><label>Mode</label>
             <select name="mode">
-              <option value="any" <?= ($rule['mode']??'any')==='any'?'selected':'' ?>>any – mind. 1 aktiv</option>
-              <option value="all" <?= ($rule['mode']??'any')==='all'?'selected':'' ?>>all – alle aktiv</option>
+              <option value="any" <?= (isset($rule['mode'])?$rule['mode']:'any')==='any'?'selected':'' ?>>any – mind. 1 aktiv</option>
+              <option value="all" <?= (isset($rule['mode'])?$rule['mode']:'any')==='all'?'selected':'' ?>>all – alle aktiv</option>
             </select></div>
           <div class="rule-row">
             <span class="rule-status <?= !$status['db_ok']?'dberr':($status['active']?'active':'inactive') ?>">
