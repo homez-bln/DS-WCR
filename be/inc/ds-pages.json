@@ -1,0 +1,73 @@
+{
+  "_comment": "Automatisch generierte WP-Seiten. Jede Zeile = 1 WP-Seite ds-{name}-{suffix}",
+
+  "static": [
+    { "name": "wetter",      "suffix": "landscape", "title": "Wetter",         "shortcode": "[wcr_wetter]",                                    "icon": "🌤", "menu_order": 10 },
+    { "name": "windmap",     "suffix": "landscape", "title": "Wind Map",        "shortcode": "[wcr_windmap]",                                   "icon": "💨", "menu_order": 20 },
+    { "name": "tickets",     "suffix": "landscape", "title": "Tickets",         "shortcode": "[wcr_tickets]",                                   "icon": "🎫", "menu_order": 30 },
+    { "name": "park",        "suffix": "landscape", "title": "Park",            "shortcode": "[wcr_park]",                                      "icon": "🌊", "menu_order": 40 },
+    { "name": "kino",        "suffix": "landscape", "title": "Kino",            "shortcode": "[wcr_kino]",                                      "icon": "🎦", "menu_order": 50 },
+    { "name": "oeffnungszeiten", "suffix": "portrait", "title": "Öffnungszeiten", "shortcode": "[wcr_oeffnungszeiten]",                         "icon": "🕐", "menu_order": 10 },
+    { "name": "insta",       "suffix": "portrait", "title": "Instagram Grid",   "shortcode": "[wcr_instagram]",                                 "icon": "📸", "menu_order": 20 },
+    { "name": "insta-reel",  "suffix": "portrait", "title": "Instagram Reels",  "shortcode": "[wcr_instagram_reels]",                           "icon": "🎥", "menu_order": 30 }
+  ],
+
+  "tables": [
+    {
+      "table":  "food",
+      "name":   "food",
+      "title":  "Speisekarte",
+      "icon":   "🍔",
+      "suffix": "list",
+      "shortcode": "[wcr_food]",
+      "menu_order": 100
+    },
+    {
+      "table":  "drinks",
+      "name":   "getraenke",
+      "title":  "Getränke",
+      "icon":   "🍺",
+      "suffix": "list",
+      "shortcode": "[wcr_drinks]",
+      "menu_order": 110
+    },
+    {
+      "table":  "ice",
+      "name":   "eis",
+      "title":  "Eiskarte",
+      "icon":   "🍦",
+      "suffix": "list",
+      "shortcode": "[wcr_eis]",
+      "menu_order": 120
+    },
+    {
+      "table":  "cable",
+      "name":   "cable",
+      "title":  "Cable Preise",
+      "icon":   "🎫",
+      "suffix": "list",
+      "shortcode": "[wcr_cable]",
+      "menu_order": 130
+    },
+    {
+      "table":  "camping",
+      "name":   "camping",
+      "title":  "Camping Preise",
+      "icon":   "⛺",
+      "suffix": "list",
+      "shortcode": "[wcr_camping]",
+      "menu_order": 140
+    },
+    {
+      "table":  "extra",
+      "name":   "extra",
+      "title":  "Extras",
+      "icon":   "⭐",
+      "suffix": "list",
+      "shortcode": "[wcr_extra]",
+      "menu_order": 150
+    }
+  ],
+
+  "highlight_shortcode": "[wcr_produkte table=\"{table}\" titel=\"{title}\"]"
+}
