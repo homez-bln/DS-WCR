@@ -1,17 +1,17 @@
 <?php
 /**
  * ctrl/ds-seiten.php — DS-Seiten Vorschau + Aktivierungssteuerung
- * v3.1: Debug-Ausgabe wenn WP-Query fehlschlägt
+ * v4: WP REST API statt direktem DB-Zugriff
  */
 require_once __DIR__ . '/../inc/auth.php';
 require_once __DIR__ . '/../inc/db.php';
 
 wcr_require('view_ds');
 
-$PAGE_TITLE   = 'DS-Seiten – Vorschau & Steuerung';
-$WP_PREFIX    = 'wp_';          // WP Tabellen-Prefix
-$DS_SLUG_PRE  = 'ds-';         // Slug-Prefix für DS-Seiten
-$SITE_URL     = 'https://wcr-webpage.de'; // Basis-URL
+$PAGE_TITLE  = 'DS-Seiten – Vorschau & Steuerung';
+$DS_SLUG_PRE = 'ds-';
+$SITE_URL    = 'https://wcr-webpage.de';
+$WP_API_BASE = $SITE_URL . '/wp-json/wp/v2';
 
 $ALLOWED_TABLES = ['food','drinks','cable','camping','extra','ice'];
 $RULES_FILE = __DIR__ . '/../inc/ds-rules.json';
@@ -27,101 +27,70 @@ function wcr_ds_save_rules(string $file, array $rules): void {
 
 $rules = wcr_ds_load_rules($RULES_FILE);
 
-// ── WP-Seiten mit Prefix ds- laden ──
-function wcr_ds_load_wp_pages(PDO $pdo, string $prefix, string $slug_pre, string $site_url, array &$debug): array
+// ── WP-Seiten via REST API laden ──
+function wcr_ds_load_wp_pages_api(string $api_base, string $slug_pre, string $site_url): array
 {
-    $tbl  = $prefix . 'posts';
-    $tmbl = $prefix . 'postmeta';
+    $url = $api_base . '/pages?per_page=100&status=publish&orderby=menu_order&order=asc&_fields=id,slug,title,meta,acf';
 
-    try {
-        // Tabelle vorhanden?
-        $check = $pdo->query("SHOW TABLES LIKE '{$tbl}'")->fetchColumn();
-        if (!$check) {
-            $debug['error'] = "Tabelle '{$tbl}' nicht gefunden!";
-            // Zeige alle Tabellen zur Diagnose
-            $tables = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
-            $debug['all_tables'] = $tables;
-            return [];
-        }
-        $debug['table_exists'] = true;
+    $ctx = stream_context_create([
+        'http' => [
+            'timeout'       => 5,
+            'ignore_errors' => true,
+            'header'        => "Accept: application/json\r\n",
+        ]
+    ]);
 
-        // Zeige ALLE publizierten pages (ohne Prefix-Filter) zur Diagnose
-        $all_stmt = $pdo->query(
-            "SELECT p.post_name, p.post_title
-             FROM `{$tbl}` p
-             WHERE p.post_type = 'page' AND p.post_status = 'publish'
-             ORDER BY p.post_name ASC
-             LIMIT 20"
-        );
-        $debug['all_pages'] = $all_stmt->fetchAll(PDO::FETCH_ASSOC);
+    $raw = @file_get_contents($url, false, $ctx);
+    if ($raw === false) return ['pages' => [], 'error' => 'HTTP-Anfrage fehlgeschlagen (file_get_contents)'];
 
-        // Jetzt mit Prefix-Filter
-        $stmt = $pdo->prepare(
-            "SELECT p.ID, p.post_title, p.post_name, p.menu_order
-             FROM `{$tbl}` p
-             WHERE p.post_type   = 'page'
-               AND p.post_status = 'publish'
-               AND p.post_name LIKE ?
-             ORDER BY p.menu_order ASC, p.post_title ASC"
-        );
-        $stmt->execute([$slug_pre . '%']);
-        $pages = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        $debug['ds_pages_found'] = count($pages);
-
-        if (empty($pages)) return [];
-
-        $ids       = array_column($pages, 'ID');
-        $in_clause = implode(',', array_fill(0, count($ids), '?'));
-
-        $mstmt = $pdo->prepare(
-            "SELECT post_id, meta_key, meta_value
-             FROM `{$tmbl}`
-             WHERE post_id IN ({$in_clause})
-               AND meta_key IN ('ds_gruppe','ds_icon','ds_portrait')"
-        );
-        $mstmt->execute($ids);
-        $meta_rows = $mstmt->fetchAll(PDO::FETCH_ASSOC);
-
-        $meta = [];
-        foreach ($meta_rows as $row) {
-            $meta[$row['post_id']][$row['meta_key']] = $row['meta_value'];
-        }
-
-        $result = [];
-        foreach ($pages as $p) {
-            $id       = $p['ID'];
-            $m        = $meta[$id] ?? [];
-            $slug     = $p['post_name'];
-            $short    = substr($slug, strlen($slug_pre));
-            $title    = $p['post_title'];
-            $icon     = $m['ds_icon']   ?? '📱';
-            $gruppe   = $m['ds_gruppe'] ?? 'landscape';
-            $portrait = isset($m['ds_portrait']) && $m['ds_portrait'] === '1';
-            $url      = rtrim($site_url, '/') . '/' . $slug . '/';
-
-            $result[] = [
-                'title'    => $title,
-                'slug'     => $short,
-                'url'      => $url,
-                'icon'     => $icon,
-                'gruppe'   => $gruppe,
-                'portrait' => $portrait,
-                'wp_id'    => $id,
-            ];
-        }
-        return $result;
-
-    } catch (Exception $e) {
-        $debug['error']     = $e->getMessage();
-        $debug['exception'] = get_class($e);
-        return [];
+    // HTTP-Statuscode prüfen
+    $http_code = 0;
+    if (!empty($http_response_header)) {
+        preg_match('/HTTP\/\S+\s+(\d+)/', $http_response_header[0], $m);
+        $http_code = (int)($m[1] ?? 0);
     }
+    if ($http_code !== 200) {
+        return ['pages' => [], 'error' => "REST API HTTP {$http_code}", 'raw' => substr($raw, 0, 300)];
+    }
+
+    $data = json_decode($raw, true);
+    if (!is_array($data)) return ['pages' => [], 'error' => 'JSON-Decode fehlgeschlagen'];
+
+    $result = [];
+    foreach ($data as $p) {
+        $slug = $p['slug'] ?? '';
+        if (!str_starts_with($slug, $slug_pre)) continue;
+
+        $short = substr($slug, strlen($slug_pre));
+        $title = $p['title']['rendered'] ?? $slug;
+        $title = strip_tags(html_entity_decode($title, ENT_QUOTES, 'UTF-8'));
+
+        // Custom Fields: zuerst ACF, dann meta
+        $acf    = $p['acf']  ?? [];
+        $meta   = $p['meta'] ?? [];
+        $gruppe = $acf['ds_gruppe']   ?? $meta['ds_gruppe']   ?? 'landscape';
+        $icon   = $acf['ds_icon']     ?? $meta['ds_icon']     ?? '📱';
+        $port   = ($acf['ds_portrait'] ?? $meta['ds_portrait'] ?? '') === '1';
+
+        $result[] = [
+            'title'    => $title,
+            'slug'     => $short,
+            'url'      => rtrim($site_url, '/') . '/' . $slug . '/',
+            'icon'     => $icon ?: '📱',
+            'gruppe'   => $gruppe ?: 'landscape',
+            'portrait' => $port,
+            'wp_id'    => $p['id'] ?? 0,
+        ];
+    }
+    return ['pages' => $result, 'total_wp' => count($data)];
 }
 
-$wp_debug   = [];
-$wp_seiten  = wcr_ds_load_wp_pages($pdo, $WP_PREFIX, $DS_SLUG_PRE, $SITE_URL, $wp_debug);
+$api_result = wcr_ds_load_wp_pages_api($WP_API_BASE, $DS_SLUG_PRE, $SITE_URL);
+$wp_seiten  = $api_result['pages'] ?? [];
+$api_error  = $api_result['error'] ?? null;
+$api_total  = $api_result['total_wp'] ?? null;
 
+// ── Fallback-Liste ──
 $fallback_seiten = [
     ['title'=>'Starter Pack',       'slug'=>'starter-pack',          'url'=>$SITE_URL.'/starter-pack/',          'icon'=>'🏄','gruppe'=>'landscape','portrait'=>false],
     ['title'=>'Wetter',             'slug'=>'wetter',                'url'=>$SITE_URL.'/wetter/',                'icon'=>'🌤','gruppe'=>'landscape','portrait'=>false],
@@ -238,7 +207,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['wcr_ds_save'])) {
             'mode'     => in_array($_POST['mode'] ?? 'any', ['any','all']) ? $_POST['mode'] : 'any',
         ];
         wcr_ds_save_rules($RULES_FILE, $rules);
-        $save_msg = '✅ Gespeichert für Seite: ' . htmlspecialchars($slug, ENT_QUOTES, 'UTF-8');
+        $save_msg = '✅ Gespeichert für: ' . htmlspecialchars($slug, ENT_QUOTES, 'UTF-8');
     }
 }
 
@@ -307,15 +276,10 @@ $ds_count = count($alle_seiten);
     .rule-save-btn{align-self:flex-end;background:#0071e3;color:#fff;border:none;border-radius:8px;padding:5px 16px;font-size:.8rem;font-weight:600;cursor:pointer;}
     .rule-save-btn:hover{background:#005bb5;}
     .save-notice{padding:10px 20px;margin-bottom:16px;background:#d1fae5;border:1px solid #6ee7b7;border-radius:8px;color:#065f46;font-weight:600;}
-    .ds-info-box{padding:12px 16px;margin-bottom:16px;border-radius:8px;font-size:.8rem;line-height:1.6;}
+    .ds-info-box{padding:12px 16px;margin-bottom:16px;border-radius:8px;font-size:.8rem;line-height:1.7;}
     .ds-info-box.warn{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;}
     .ds-info-box.err{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;}
-    .ds-info-box code{background:#dbeafe;padding:1px 5px;border-radius:4px;font-size:.78rem;}
-    .ds-info-box.err code{background:#fee2e2;}
-    .ds-debug-table{width:100%;border-collapse:collapse;margin-top:8px;font-size:.75rem;}
-    .ds-debug-table td,.ds-debug-table th{padding:3px 8px;border:1px solid #e5e7eb;text-align:left;}
-    .ds-debug-table th{background:#f3f4f6;font-weight:700;}
-    .ds-debug-toggle{cursor:pointer;font-size:.72rem;color:#6b7280;text-decoration:underline;margin-top:6px;display:inline-block;}
+    .ds-info-box code{background:rgba(0,0,0,.07);padding:1px 5px;border-radius:4px;font-size:.78rem;}
   </style>
 </head>
 <body class="bo" data-csrf="<?= wcr_csrf_attr() ?>">
@@ -324,45 +288,23 @@ $ds_count = count($alle_seiten);
 <div class="header-controls">
   <h1>🖥 <?= htmlspecialchars($PAGE_TITLE, ENT_QUOTES, 'UTF-8') ?>
     <span class="ds-source-badge <?= $using_wp ? 'wp' : 'fb' ?>">
-      <?= $using_wp ? '🐙 WordPress dynamisch (' . count($alle_seiten) . ' Seiten)' : '⚠️ Fallback-Liste' ?>
+      <?= $using_wp
+        ? '🐙 WordPress (' . count($alle_seiten) . ' Seiten)'
+        : '⚠️ Fallback-Liste' ?>
     </span>
   </h1>
   <button class="btn-upload" onclick="dsReloadAll()">↺ Alle neu laden</button>
 </div>
 
 <?php if (!$using_wp): ?>
-<div class="ds-info-box <?= isset($wp_debug['error']) ? 'err' : 'warn' ?>">
-  <?php if (isset($wp_debug['error'])): ?>
-    🔴 <strong>DB-Fehler:</strong> <code><?= htmlspecialchars($wp_debug['error'], ENT_QUOTES, 'UTF-8') ?></code>
-    <?php if (!empty($wp_debug['exception'])): ?>
-      <br><small><?= htmlspecialchars($wp_debug['exception'], ENT_QUOTES, 'UTF-8') ?></small>
-    <?php endif; ?>
+<div class="ds-info-box <?= $api_error ? 'err' : 'warn' ?>">
+  <?php if ($api_error): ?>
+    🔴 <strong>REST API Fehler:</strong> <code><?= htmlspecialchars($api_error, ENT_QUOTES, 'UTF-8') ?></code><br>
+    <small>Geprüfte URL: <code><?= htmlspecialchars($WP_API_BASE . '/pages?...', ENT_QUOTES, 'UTF-8') ?></code></small>
   <?php else: ?>
-    ⚠️ <strong>Keine WP-Seiten mit Prefix <code>ds-</code> gefunden</strong>
-    <?php if (!empty($wp_debug['all_tables'])): ?>
-      — DB erreichbar ✅
-    <?php endif; ?>
-  <?php endif; ?>
-
-  <?php if (!empty($wp_debug['all_pages'])): ?>
-    <br><br>
-    <strong>📋 Alle publizierten Seiten in der DB (max. 20) — prüfe ob Slugs mit <code>ds-</code> beginnen:</strong>
-    <table class="ds-debug-table">
-      <tr><th>post_name (Slug)</th><th>post_title</th></tr>
-      <?php foreach ($wp_debug['all_pages'] as $dp): ?>
-      <tr>
-        <td><code><?= htmlspecialchars($dp['post_name'], ENT_QUOTES, 'UTF-8') ?></code>
-          <?= str_starts_with($dp['post_name'], 'ds-') ? ' ✅' : '' ?>
-        </td>
-        <td><?= htmlspecialchars($dp['post_title'], ENT_QUOTES, 'UTF-8') ?></td>
-      </tr>
-      <?php endforeach; ?>
-    </table>
-  <?php elseif (isset($wp_debug['table_exists'])): ?>
-    <br><small>⚠️ Keine publizierten Seiten in der Tabelle <code>wp_posts</code> gefunden.</small>
-  <?php elseif (!empty($wp_debug['all_tables'])): ?>
-    <br><br><strong>Vorhandene Tabellen:</strong><br>
-    <code><?= implode(', ', array_map(fn($t) => htmlspecialchars($t, ENT_QUOTES, 'UTF-8'), $wp_debug['all_tables'])) ?></code>
+    ⚠️ <strong>REST API erreichbar</strong> (<?= (int)$api_total ?> Seiten total)
+    — aber keine Seite hat Slug-Prefix <code>ds-</code>.<br>
+    Bitte in WP Admin: Seite bearbeiten → Permalink → Slug auf <code>ds-seitenname</code> setzen.
   <?php endif; ?>
 </div>
 <?php endif; ?>
@@ -389,8 +331,8 @@ $ds_count = count($alle_seiten);
       $rule     = $s['rule'];
       $ov       = $rule['override'] ?? 'auto';
       $effektiv = ($ov === 'force_on') ? true : (($ov === 'force_off') ? false : $status['active']);
-      $badgeColor = $effektiv ? '#00c853' : '#ff3b30';
-      $badgeText  = $effektiv ? 'Aktiv' : 'Inaktiv';
+      $bc       = $effektiv ? '#00c853' : '#ff3b30';
+      $bt       = $effektiv ? 'Aktiv' : 'Inaktiv';
     ?>
     <div class="ds-card <?= !$effektiv ? 'ds-inactive' : '' ?>" id="ds-card-<?= $i ?>">
       <div class="ds-card-header">
@@ -399,11 +341,11 @@ $ds_count = count($alle_seiten);
           <span><?= htmlspecialchars($s['title'], ENT_QUOTES, 'UTF-8') ?></span>
         </div>
         <div class="ds-card-actions">
-          <span class="ds-badge" style="background:<?= $badgeColor ?>22;color:<?= $badgeColor ?>;border-color:<?= $badgeColor ?>55;">
-            <span class="ds-dot" style="background:<?= $badgeColor ?>"></span>
-            <?= htmlspecialchars($badgeText, ENT_QUOTES, 'UTF-8') ?>
+          <span class="ds-badge" style="background:<?= $bc ?>22;color:<?= $bc ?>;border-color:<?= $bc ?>55;">
+            <span class="ds-dot" style="background:<?= $bc ?>"></span>
+            <?= htmlspecialchars($bt, ENT_QUOTES, 'UTF-8') ?>
           </span>
-          <?php if (!$status['db_ok']): ?><span title="DB-Fehler" style="font-size:.8rem;">⚠️</span><?php endif; ?>
+          <?php if (!$status['db_ok']): ?><span title="DB-Fehler">⚠️</span><?php endif; ?>
           <button class="ds-btn edit-btn" onclick="toggleRule(<?= $i ?>)">✎ Regel</button>
           <button class="ds-btn" onclick="dsReload(<?= $i ?>)">↺</button>
           <a class="ds-btn primary" href="<?= htmlspecialchars($s['url'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener">↗ Öffnen</a>
@@ -417,38 +359,31 @@ $ds_count = count($alle_seiten);
           <input type="hidden" name="page_slug" value="<?= htmlspecialchars($s['slug'], ENT_QUOTES, 'UTF-8') ?>">
           <div class="rule-row"><label>Override</label>
             <select name="override">
-              <option value="auto"      <?= ($ov==='auto')      ?'selected':'' ?>>Auto (DB-Check)</option>
-              <option value="force_on"  <?= ($ov==='force_on')  ?'selected':'' ?>>Force ON</option>
-              <option value="force_off" <?= ($ov==='force_off') ?'selected':'' ?>>Force OFF</option>
-            </select>
-          </div>
+              <option value="auto"      <?= $ov==='auto'     ?'selected':'' ?>>Auto (DB-Check)</option>
+              <option value="force_on"  <?= $ov==='force_on' ?'selected':'' ?>>Force ON</option>
+              <option value="force_off" <?= $ov==='force_off'?'selected':'' ?>>Force OFF</option>
+            </select></div>
           <div class="rule-row"><label>Tabellen</label>
             <div class="rule-cb-group">
               <?php foreach ($ALLOWED_TABLES as $tbl): ?>
-              <label><input type="checkbox" name="tables[]" value="<?= htmlspecialchars($tbl, ENT_QUOTES, 'UTF-8') ?>"
+              <label><input type="checkbox" name="tables[]" value="<?= htmlspecialchars($tbl,ENT_QUOTES,'UTF-8') ?>"
                 <?= in_array($tbl,(array)($rule['tables']??[]),true)?'checked':'' ?>>
-                <?= htmlspecialchars($tbl, ENT_QUOTES, 'UTF-8') ?></label>
-              <?php endforeach; ?>
-            </div>
-          </div>
+                <?= htmlspecialchars($tbl,ENT_QUOTES,'UTF-8') ?></label>
+              <?php endforeach; ?></div></div>
           <div class="rule-row"><label>Typ</label>
-            <input type="text" name="typ" value="<?= htmlspecialchars($rule['typ']??'', ENT_QUOTES, 'UTF-8') ?>" list="typen-list" placeholder="z.B. Burger, Softdrink …">
-            <datalist id="typen-list"><?php foreach ($typen_all as $tv): ?><option value="<?= htmlspecialchars($tv, ENT_QUOTES, 'UTF-8') ?>"></option><?php endforeach; ?></datalist>
-          </div>
+            <input type="text" name="typ" value="<?= htmlspecialchars($rule['typ']??'',ENT_QUOTES,'UTF-8') ?>" list="typen-list" placeholder="z.B. Burger …">
+            <datalist id="typen-list"><?php foreach($typen_all as $tv):?><option value="<?= htmlspecialchars($tv,ENT_QUOTES,'UTF-8') ?>"><?php endforeach;?></datalist></div>
           <div class="rule-row"><label>IDs</label>
-            <input type="text" name="ids" value="<?= htmlspecialchars($rule['ids']??'', ENT_QUOTES, 'UTF-8') ?>" placeholder="3010,3089,3162">
-          </div>
+            <input type="text" name="ids" value="<?= htmlspecialchars($rule['ids']??'',ENT_QUOTES,'UTF-8') ?>" placeholder="3010,3089"></div>
           <div class="rule-row"><label>Mode</label>
             <select name="mode">
-              <option value="any" <?= (($rule['mode']??'any')==='any')?'selected':'' ?>>any – mind. 1 aktiv</option>
-              <option value="all" <?= (($rule['mode']??'any')==='all')?'selected':'' ?>>all – alle müssen aktiv sein</option>
-            </select>
-          </div>
+              <option value="any" <?= ($rule['mode']??'any')==='any'?'selected':'' ?>>any – mind. 1 aktiv</option>
+              <option value="all" <?= ($rule['mode']??'any')==='all'?'selected':'' ?>>all – alle aktiv</option>
+            </select></div>
           <div class="rule-row">
             <span class="rule-status <?= !$status['db_ok']?'dberr':($status['active']?'active':'inactive') ?>">
-              <?= $status['active']?'✅':'⛔' ?> <?= htmlspecialchars($status['reason'], ENT_QUOTES, 'UTF-8') ?>
-            </span>
-          </div>
+              <?= $status['active']?'✅':'⛔' ?> <?= htmlspecialchars($status['reason'],ENT_QUOTES,'UTF-8') ?>
+            </span></div>
           <button type="submit" class="rule-save-btn">Speichern</button>
         </form>
       </div>
@@ -458,14 +393,13 @@ $ds_count = count($alle_seiten);
           <div class="ds-spinner"></div><span>Lädt…</span>
         </div>
         <iframe id="ds-frame-<?= $i ?>"
-          data-src="<?= htmlspecialchars($s['url'], ENT_QUOTES, 'UTF-8') ?>"
+          data-src="<?= htmlspecialchars($s['url'],ENT_QUOTES,'UTF-8') ?>"
           data-nw="<?= $nW ?>" data-nh="<?= $nH ?>"
           style="width:<?= $nW ?>px;height:<?= $nH ?>px;"
           scrolling="no"></iframe>
       </div>
-
       <div class="ds-card-footer">
-        <span class="ds-url"><?= htmlspecialchars($s['url'], ENT_QUOTES, 'UTF-8') ?></span>
+        <span class="ds-url"><?= htmlspecialchars($s['url'],ENT_QUOTES,'UTF-8') ?></span>
         <span class="ds-time" id="ds-time-<?= $i ?>">-</span>
       </div>
     </div>
@@ -477,60 +411,51 @@ $ds_count = count($alle_seiten);
 <script>
 var DS_COUNT = <?= json_encode($ds_count) ?>;
 var dsStartTimes = {};
-function dsScaleWrap(wrap) {
-  var iframe = wrap.querySelector('iframe');
-  if (!iframe) return;
-  var nW = parseInt(iframe.dataset.nw,10)||1920;
-  var nH = parseInt(iframe.dataset.nh,10)||1080;
-  var scale = wrap.offsetWidth / nW;
-  iframe.style.transform = 'scale(' + scale + ')';
-  wrap.style.height = Math.round(nH * scale) + 'px';
+function dsScaleWrap(w){
+  var f=w.querySelector('iframe'); if(!f)return;
+  var nW=parseInt(f.dataset.nw,10)||1920, nH=parseInt(f.dataset.nh,10)||1080;
+  var s=w.offsetWidth/nW;
+  f.style.transform='scale('+s+')';
+  w.style.height=Math.round(nH*s)+'px';
 }
-var ro = new ResizeObserver(function(entries){
-  entries.forEach(function(e){ dsScaleWrap(e.target); });
-});
-function dsLoaded(idx) {
-  var f=document.getElementById('ds-frame-'+idx);
-  var sp=document.getElementById('ds-spin-'+idx);
-  var ti=document.getElementById('ds-time-'+idx);
-  if (!f||!sp) return;
+var ro=new ResizeObserver(function(e){e.forEach(function(x){dsScaleWrap(x.target);});});
+function dsLoaded(i){
+  var f=document.getElementById('ds-frame-'+i);
+  var sp=document.getElementById('ds-spin-'+i);
+  var ti=document.getElementById('ds-time-'+i);
+  if(!f||!sp)return;
   f.classList.add('loaded'); sp.classList.add('hidden');
-  if (ti && dsStartTimes[idx]) {
-    var ms = Date.now()-dsStartTimes[idx];
-    ti.textContent = '✓ '+(ms/1000).toFixed(1)+'s';
-    ti.style.color = ms<2000?'#16a34a':ms<5000?'#d97706':'#dc2626';
+  if(ti&&dsStartTimes[i]){
+    var ms=Date.now()-dsStartTimes[i];
+    ti.textContent='✓ '+(ms/1000).toFixed(1)+'s';
+    ti.style.color=ms<2000?'#16a34a':ms<5000?'#d97706':'#dc2626';
   }
-  var w=document.getElementById('ds-wrap-'+idx);
-  if (w) dsScaleWrap(w);
+  var w=document.getElementById('ds-wrap-'+i); if(w)dsScaleWrap(w);
 }
-function dsReload(idx) {
-  var f=document.getElementById('ds-frame-'+idx);
-  var sp=document.getElementById('ds-spin-'+idx);
-  var ti=document.getElementById('ds-time-'+idx);
-  if (!f) return;
+function dsReload(i){
+  var f=document.getElementById('ds-frame-'+i);
+  var sp=document.getElementById('ds-spin-'+i);
+  var ti=document.getElementById('ds-time-'+i);
+  if(!f)return;
   f.classList.remove('loaded');
-  if (sp){sp.classList.remove('hidden');sp.innerHTML='<div class="ds-spinner"></div><span>Lädt…</span>';}
-  if (ti){ti.textContent='-';ti.style.color='';}
-  dsStartTimes[idx]=Date.now();
-  f.onload=function(){dsLoaded(idx);};
+  if(sp){sp.classList.remove('hidden');sp.innerHTML='<div class="ds-spinner"></div><span>Lädt…</span>';}
+  if(ti){ti.textContent='-';ti.style.color='';}
+  dsStartTimes[i]=Date.now();
+  f.onload=function(){dsLoaded(i);};
   f.src=f.dataset.src+'?t='+Date.now();
 }
-function dsReloadAll(){
-  for(var i=0;i<DS_COUNT;i++) dsReload(i);
-}
-function toggleRule(idx){
-  var p=document.getElementById('rule-panel-'+idx);
-  if(p) p.classList.toggle('open');
+function dsReloadAll(){for(var i=0;i<DS_COUNT;i++)dsReload(i);}
+function toggleRule(i){
+  var p=document.getElementById('rule-panel-'+i);
+  if(p)p.classList.toggle('open');
 }
 document.addEventListener('DOMContentLoaded',function(){
-  document.querySelectorAll('.ds-frame-wrap').forEach(function(w){
-    ro.observe(w); dsScaleWrap(w);
-  });
+  document.querySelectorAll('.ds-frame-wrap').forEach(function(w){ro.observe(w);dsScaleWrap(w);});
   setTimeout(function(){
     document.querySelectorAll('.ds-frame-wrap iframe').forEach(function(f){
-      var idx=parseInt(f.id.replace('ds-frame-',''),10);
-      dsStartTimes[idx]=Date.now();
-      f.onload=function(){dsLoaded(idx);};
+      var i=parseInt(f.id.replace('ds-frame-',''),10);
+      dsStartTimes[i]=Date.now();
+      f.onload=function(){dsLoaded(i);};
       f.src=f.dataset.src;
     });
   },200);
