@@ -1,11 +1,7 @@
 <?php
 /**
  * ctrl/ds-sync.php — WP-Seiten automatisch generieren
- * v2.1: Fix wcr_sync_page_exists — strikt ID > 0, HTTP-Code, Auth-Check
- * Schema: ds-{name}-{suffix}
- * - Tabellen-Seiten:  ds-food-list, ds-eis-list, ...  → [wcr_food] etc.
- * - Highlight-Seiten: ds-burger-highlight, ...         → [wcr_produkte table="food" titel="Burger"]
- * - Statische Seiten: ds-wetter-landscape, ...         → [wcr_wetter] etc.
+ * v2.2: Fix — Slug nach Erstellen via PATCH erzwingen (WP ignoriert slug bei POST)
  */
 require_once __DIR__ . '/../inc/auth.php';
 require_once __DIR__ . '/../inc/db.php';
@@ -19,7 +15,6 @@ $PAGES_FILE     = __DIR__ . '/../inc/ds-pages.json';
 $CONFIG_FILE    = __DIR__ . '/../inc/ds-sync-config.json';
 $ALLOWED_TABLES = ['food','drinks','ice','cable','camping','extra'];
 
-// ── Config ───────────────────────────────────────────────────────────────────
 function wcr_sync_load_config(string $file): array {
     if (!file_exists($file)) return ['wp_user'=>'','wp_app_pass'=>''];
     $r = json_decode(file_get_contents($file), true);
@@ -30,7 +25,6 @@ function wcr_sync_save_config(string $file, array $cfg): void {
 }
 $cfg = wcr_sync_load_config($CONFIG_FILE);
 
-// ── ds-pages.json ────────────────────────────────────────────────────────────
 function wcr_sync_load_pages(string $file): array {
     if (!file_exists($file)) return [];
     $r = json_decode(file_get_contents($file), true);
@@ -38,7 +32,6 @@ function wcr_sync_load_pages(string $file): array {
 }
 $pages_def = wcr_sync_load_pages($PAGES_FILE);
 
-// ── DB Typen ─────────────────────────────────────────────────────────────────
 function wcr_sync_get_typen(PDO $pdo, array $tables): array {
     $result = [];
     foreach ($tables as $tbl) {
@@ -54,15 +47,19 @@ function wcr_sync_get_typen(PDO $pdo, array $tables): array {
     return $result;
 }
 
-// ── Slug ─────────────────────────────────────────────────────────────────────
+// Slug: ds-{name}-{suffix} — nur a-z, 0-9, Bindestriche
 function wcr_sync_make_slug(string $name, string $suffix): string {
-    $name = strtolower(trim($name));
-    $name = preg_replace('/[^a-z0-9]+/', '-', $name);
-    $name = trim($name, '-');
+    // Umlaute ersetzen
+    $map = ['\u00e4'=>'ae','\u00f6'=>'oe','\u00fc'=>'ue','\u00df'=>'ss',
+            '\u00c4'=>'ae','\u00d6'=>'oe','\u00dc'=>'ue',
+            '&'=>'und',' '=>'-'];
+    $name = mb_strtolower(trim($name), 'UTF-8');
+    foreach ($map as $k => $v) $name = str_replace(json_decode('"'.$k.'"'), $v, $name);
+    $name = preg_replace('/[^a-z0-9\-]+/', '-', $name);
+    $name = trim(preg_replace('/-+/', '-', $name), '-');
     return 'ds-' . $name . '-' . $suffix;
 }
 
-// ── HTTP-Code aus response_header ────────────────────────────────────────────
 function wcr_http_code(array $headers): int {
     foreach ($headers as $h) {
         if (preg_match('/HTTP\/\S+\s+(\d+)/', $h, $m)) return (int)$m[1];
@@ -70,57 +67,40 @@ function wcr_http_code(array $headers): int {
     return 0;
 }
 
-// ── Auth testen ──────────────────────────────────────────────────────────────
 function wcr_sync_test_auth(string $api_base, string $auth): array {
-    $url = $api_base . '/users/me?_fields=id,name';
     $ctx = stream_context_create(['http'=>[
-        'timeout'       => 6,
-        'ignore_errors' => true,
-        'header'        => "Accept: application/json\r\nAuthorization: Basic {$auth}\r\n",
+        'timeout'=>6,'ignore_errors'=>true,
+        'header'=>"Accept: application/json\r\nAuthorization: Basic {$auth}\r\n",
     ]]);
-    $raw  = @file_get_contents($url, false, $ctx);
+    $raw  = @file_get_contents($api_base.'/users/me?_fields=id,name', false, $ctx);
     $code = wcr_http_code($http_response_header ?? []);
-    if ($raw === false)   return ['ok'=>false,'msg'=>'HTTP fehlgeschlagen'];
-    if ($code === 401)    return ['ok'=>false,'msg'=>'401 Unauthorized — falsches Passwort oder User'];
-    if ($code === 403)    return ['ok'=>false,'msg'=>'403 Forbidden — User hat keine Rechte'];
+    if ($raw === false) return ['ok'=>false,'msg'=>'HTTP fehlgeschlagen'];
+    if ($code === 401)  return ['ok'=>false,'msg'=>'401 Unauthorized — falsches Passwort oder User'];
+    if ($code === 403)  return ['ok'=>false,'msg'=>'403 Forbidden'];
     $res = json_decode($raw, true);
     if (!empty($res['id'])) return ['ok'=>true,'msg'=>'Eingeloggt als: '.($res['name']??'?')];
-    return ['ok'=>false,'msg'=>'Auth-Check fehlgeschlagen: '.substr($raw,0,120)];
+    return ['ok'=>false,'msg'=>'Auth fehlgeschlagen: '.substr($raw,0,120)];
 }
 
-// ── Seite existiert? (FIX: strikt ID > 0 + HTTP-Code) ───────────────────────
 function wcr_sync_page_exists(string $api_base, string $slug, string $auth): array {
-    // Erst mit Auth + status=any versuchen (braucht edit-Rechte)
-    $url = $api_base . '/pages?slug=' . urlencode($slug) . '&status=any&per_page=1&_fields=id,slug,status';
+    $url = $api_base.'/pages?slug='.urlencode($slug).'&status=any&per_page=1&_fields=id,slug,status';
     $ctx = stream_context_create(['http'=>[
-        'timeout'       => 8,
-        'ignore_errors' => true,
-        'header'        => "Accept: application/json\r\nAuthorization: Basic {$auth}\r\n",
+        'timeout'=>8,'ignore_errors'=>true,
+        'header'=>"Accept: application/json\r\nAuthorization: Basic {$auth}\r\n",
     ]]);
     $raw  = @file_get_contents($url, false, $ctx);
     $code = wcr_http_code($http_response_header ?? []);
-
-    if ($raw === false) return ['error' => 'HTTP fehlgeschlagen (allow_url_fopen?)'];
-    if ($code === 401)  return ['error' => '401 Unauthorized'];
-    if ($code === 403)  return ['error' => '403 Forbidden'];
-    if ($code !== 200)  return ['error' => 'HTTP '.$code];
-
+    if ($raw === false) return ['error'=>'HTTP fehlgeschlagen'];
+    if ($code === 401)  return ['error'=>'401 Unauthorized'];
+    if ($code === 403)  return ['error'=>'403 Forbidden'];
+    if ($code !== 200)  return ['error'=>'HTTP '.$code];
     $data = json_decode($raw, true);
-    if (!is_array($data)) return ['error' => 'JSON-Fehler: '.substr($raw,0,80)];
-
-    // STRIKT: nur wenn ID eine echte positive Zahl ist
-    if (!empty($data) && isset($data[0]['id']) && (int)$data[0]['id'] > 0) {
-        return [
-            'exists' => true,
-            'id'     => (int)$data[0]['id'],
-            'status' => $data[0]['status'] ?? '?',
-        ];
-    }
-
-    return ['exists' => false];
+    if (!is_array($data)) return ['error'=>'JSON-Fehler: '.substr($raw,0,80)];
+    if (!empty($data) && (int)($data[0]['id']??0) > 0)
+        return ['exists'=>true,'id'=>(int)$data[0]['id'],'status'=>$data[0]['status']??'?'];
+    return ['exists'=>false];
 }
 
-// ── Elementor-Data ────────────────────────────────────────────────────────────
 function wcr_sync_elementor_data(string $shortcode): string {
     $uid = substr(md5($shortcode.uniqid('',true)),0,7);
     $data = [[
@@ -138,15 +118,22 @@ function wcr_sync_elementor_data(string $shortcode): string {
     return json_encode($data, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
 }
 
-// ── Seite erstellen ───────────────────────────────────────────────────────────
+/**
+ * Seite erstellen + Slug danach via PATCH erzwingen
+ * WP ignoriert manchmal den slug beim POST und generiert ihn aus dem Titel.
+ * Daher: POST zum Erstellen, dann PATCH /pages/{id} mit korrektem Slug.
+ */
 function wcr_sync_create_page(
     string $api_base, string $auth,
     string $slug, string $title, string $shortcode,
     int $menu_order = 9999
 ): array {
+    // Titel sauber (keine Sonderzeichen die WP verwirren)
+    $safe_title = $title;
+
     $body = json_encode([
         'slug'       => $slug,
-        'title'      => $title,
+        'title'      => $safe_title,
         'status'     => 'publish',
         'menu_order' => $menu_order,
         'content'    => '<!-- wp:shortcode -->'.$shortcode.'<!-- /wp:shortcode -->',
@@ -157,35 +144,46 @@ function wcr_sync_create_page(
         ],
     ], JSON_UNESCAPED_UNICODE);
 
-    $ctx = stream_context_create(['http'=>[
-        'method'        => 'POST',
-        'timeout'       => 12,
-        'ignore_errors' => true,
-        'header'        => implode("\r\n",[
-            'Content-Type: application/json',
-            'Accept: application/json',
-            'Authorization: Basic '.$auth,
-        ])."\r\n",
-        'content' => $body,
-    ]]);
+    $headers = implode("\r\n",[
+        'Content-Type: application/json',
+        'Accept: application/json',
+        'Authorization: Basic '.$auth,
+    ])."\r\n";
 
+    // POST — Seite erstellen
+    $ctx = stream_context_create(['http'=>[
+        'method'=>'POST','timeout'=>12,'ignore_errors'=>true,
+        'header'=>$headers,'content'=>$body,
+    ]]);
     $raw  = @file_get_contents($api_base.'/pages', false, $ctx);
     $code = wcr_http_code($http_response_header ?? []);
 
-    if ($raw === false) return ['ok'=>false,'error'=>'HTTP fehlgeschlagen'];
+    if ($raw === false) return ['ok'=>false,'error'=>'POST HTTP fehlgeschlagen'];
     if ($code === 401)  return ['ok'=>false,'error'=>'401 Unauthorized'];
-    if ($code === 403)  return ['ok'=>false,'error'=>'403 Forbidden — keine Schreibrechte'];
+    if ($code === 403)  return ['ok'=>false,'error'=>'403 Forbidden'];
 
     $res = json_decode($raw, true);
-    if (!is_array($res)) return ['ok'=>false,'error'=>'JSON-Fehler'];
-    if (!empty($res['id']) && (int)$res['id'] > 0)
-        return ['ok'=>true,'id'=>(int)$res['id'],'url'=>$res['link']??''];
+    if (!is_array($res) || empty($res['id']) || (int)$res['id'] < 1)
+        return ['ok'=>false,'error'=>($res['message']??substr($raw,0,200))];
 
-    $msg = $res['message'] ?? substr($raw,0,200);
-    return ['ok'=>false,'error'=>$msg];
+    $page_id  = (int)$res['id'];
+    $real_slug = $res['slug'] ?? '';
+
+    // PATCH — Slug erzwingen falls WP ihn umbenannt hat
+    if ($real_slug !== $slug) {
+        $patch_body = json_encode(['slug' => $slug], JSON_UNESCAPED_UNICODE);
+        $pctx = stream_context_create(['http'=>[
+            'method'=>'POST','timeout'=>8,'ignore_errors'=>true,
+            'header'=>$headers.'X-HTTP-Method-Override: PATCH'."\r\n",
+            'content'=>$patch_body,
+        ]]);
+        @file_get_contents($api_base.'/pages/'.$page_id, false, $pctx);
+    }
+
+    return ['ok'=>true,'id'=>$page_id,'url'=>$res['link']??'','slug_fixed'=>($real_slug !== $slug)];
 }
 
-// ── POST ──────────────────────────────────────────────────────────────────────
+// ── POST-Handling ───────────────────────────────────────────────────────────────────
 $config_msg = '';
 $auth_test  = null;
 if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['wcr_save_config'])) {
@@ -193,10 +191,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['wcr_save_config'])) {
     $cfg['wp_user']     = trim($_POST['wp_user'] ?? '');
     $cfg['wp_app_pass'] = trim($_POST['wp_app_pass'] ?? '');
     wcr_sync_save_config($CONFIG_FILE, $cfg);
-    // Auth sofort testen
-    if ($cfg['wp_user'] && $cfg['wp_app_pass']) {
+    if ($cfg['wp_user'] && $cfg['wp_app_pass'])
         $auth_test = wcr_sync_test_auth($WP_API_BASE, base64_encode($cfg['wp_user'].':'.$cfg['wp_app_pass']));
-    }
     $config_msg = '✅ Gespeichert.';
 }
 
@@ -207,34 +203,26 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['wcr_run_sync'])) {
     $wp_pass = $cfg['wp_app_pass'] ?? '';
 
     if (empty($wp_user) || empty($wp_pass)) {
-        $sync_log[] = ['status'=>'error','slug'=>'–','msg'=>'Kein WP Application Password konfiguriert.'];
+        $sync_log[] = ['status'=>'error','slug'=>'–','msg'=>'Kein App-Password konfiguriert.'];
     } else {
         $auth = base64_encode($wp_user.':'.$wp_pass);
-
-        // Auth-Check zuerst
         $auth_check = wcr_sync_test_auth($WP_API_BASE, $auth);
         if (!$auth_check['ok']) {
             $sync_log[] = ['status'=>'error','slug'=>'AUTH','msg'=>'⛔ '.$auth_check['msg']];
         } else {
             $sync_log[] = ['status'=>'skip','slug'=>'AUTH','msg'=>'🔑 '.$auth_check['msg']];
-
-            // Seiten sammeln
             $to_sync = [];
-            foreach (($pages_def['static'] ?? []) as $p) {
+            foreach (($pages_def['static'] ?? []) as $p)
                 $to_sync[] = ['slug'=>wcr_sync_make_slug($p['name'],$p['suffix']),'title'=>$p['title'],'shortcode'=>$p['shortcode'],'menu_order'=>(int)($p['menu_order']??9999)];
-            }
-            foreach (($pages_def['tables'] ?? []) as $t) {
+            foreach (($pages_def['tables'] ?? []) as $t)
                 $to_sync[] = ['slug'=>wcr_sync_make_slug($t['name'],$t['suffix']),'title'=>$t['title'],'shortcode'=>$t['shortcode'],'menu_order'=>(int)($t['menu_order']??9999)];
-            }
-            $hl_tpl   = $pages_def['highlight_shortcode'] ?? '[wcr_produkte table="{table}" titel="{title}"]';
+            $hl_tpl = $pages_def['highlight_shortcode'] ?? '[wcr_produkte table="{table}" titel="{title}"]';
             $hl_order = 200;
             foreach (wcr_sync_get_typen($pdo, $ALLOWED_TABLES) as $entry) {
                 $sc = str_replace(['{table}','{title}'],[$entry['table'],$entry['typ']],$hl_tpl);
-                $to_sync[] = ['slug'=>wcr_sync_make_slug($entry['typ'],'highlight'),'title'=>$entry['typ'].' — Highlight','shortcode'=>$sc,'menu_order'=>$hl_order];
+                $to_sync[] = ['slug'=>wcr_sync_make_slug($entry['typ'],'highlight'),'title'=>$entry['typ'].' Highlight','shortcode'=>$sc,'menu_order'=>$hl_order];
                 $hl_order += 10;
             }
-
-            // Check + Erstellen
             foreach ($to_sync as $page) {
                 $check = wcr_sync_page_exists($WP_API_BASE, $page['slug'], $auth);
                 if (!empty($check['error'])) {
@@ -247,7 +235,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['wcr_run_sync'])) {
                 }
                 $res = wcr_sync_create_page($WP_API_BASE,$auth,$page['slug'],$page['title'],$page['shortcode'],$page['menu_order']);
                 if ($res['ok']) {
-                    $sync_log[] = ['status'=>'created','slug'=>$page['slug'],'msg'=>'✅ Erstellt — ID '.$res['id'],'url'=>$res['url']??''];
+                    $extra = !empty($res['slug_fixed']) ? ' (Slug korrigiert)' : '';
+                    $sync_log[] = ['status'=>'created','slug'=>$page['slug'],'msg'=>'✅ Erstellt — ID '.$res['id'].$extra,'url'=>$res['url']??''];
                 } else {
                     $sync_log[] = ['status'=>'error','slug'=>$page['slug'],'msg'=>'❌ '.$res['error']];
                 }
@@ -256,7 +245,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['wcr_run_sync'])) {
     }
 }
 
-// ── Vorschau ──────────────────────────────────────────────────────────────────
+// ── Vorschau ───────────────────────────────────────────────────────────────────
 $preview = [];
 foreach (($pages_def['static'] ?? []) as $p)
     $preview[] = ['slug'=>wcr_sync_make_slug($p['name'],$p['suffix']),'sc'=>$p['shortcode'],'group'=>'Statisch'];
@@ -316,46 +305,35 @@ $has_auth = !empty($cfg['wp_user']) && !empty($cfg['wp_app_pass']);
 <div class="header-controls" style="margin-bottom:20px;">
   <h1>🔄 <?= htmlspecialchars($PAGE_TITLE,ENT_QUOTES,'UTF-8') ?></h1>
 </div>
-
-<!-- Config -->
 <div class="sync-card">
   <h2>🔑 WP Application Password</h2>
-  <?php if ($config_msg): ?>
-    <div class="notice ok"><?= htmlspecialchars($config_msg,ENT_QUOTES,'UTF-8') ?></div>
-  <?php endif; ?>
-  <?php if ($auth_test !== null): ?>
-    <div class="notice <?= $auth_test['ok']?'ok':'err' ?>"><?= htmlspecialchars($auth_test['msg'],ENT_QUOTES,'UTF-8') ?></div>
-  <?php endif; ?>
-  <?php if (!$has_auth): ?>
-  <div class="notice warn">⚠️ Noch kein App-Password. WP Admin → Benutzer → Profil → <strong>Anwendungspasswörter</strong> → Name → Generieren.</div>
-  <?php endif; ?>
+  <?php if ($config_msg): ?><div class="notice ok"><?= htmlspecialchars($config_msg,ENT_QUOTES,'UTF-8') ?></div><?php endif; ?>
+  <?php if ($auth_test !== null): ?><div class="notice <?= $auth_test['ok']?'ok':'err' ?>"><?= htmlspecialchars($auth_test['msg'],ENT_QUOTES,'UTF-8') ?></div><?php endif; ?>
+  <?php if (!$has_auth): ?><div class="notice warn">⚠️ Noch kein App-Password. WP Admin → Benutzer → Profil → Anwendungspasswörter.</div><?php endif; ?>
   <form method="post">
     <?= wcr_csrf_field() ?>
     <input type="hidden" name="wcr_save_config" value="1">
     <div class="form-row">
-      <label>WP Benutzername<input type="text" name="wp_user" value="<?= htmlspecialchars($cfg['wp_user']??'',ENT_QUOTES,'UTF-8') ?>" placeholder="admin" autocomplete="off"></label>
-      <label>Application Password<input type="password" name="wp_app_pass" value="<?= htmlspecialchars($cfg['wp_app_pass']??'',ENT_QUOTES,'UTF-8') ?>" placeholder="xxxx xxxx xxxx xxxx xxxx xxxx" autocomplete="off"></label>
-      <button type="submit" class="btn-primary" style="margin-bottom:3px;">Speichern & testen</button>
+      <label>WP Benutzername<input type="text" name="wp_user" value="<?= htmlspecialchars($cfg['wp_user']??'',ENT_QUOTES,'UTF-8') ?>" autocomplete="off"></label>
+      <label>Application Password<input type="password" name="wp_app_pass" value="<?= htmlspecialchars($cfg['wp_app_pass']??'',ENT_QUOTES,'UTF-8') ?>" autocomplete="off"></label>
+      <button type="submit" class="btn-primary" style="margin-bottom:3px;">Speichern &amp; testen</button>
     </div>
   </form>
 </div>
-
-<!-- Sync -->
 <div class="sync-card">
   <h2>🚀 Sync ausführen</h2>
-  <p style="font-size:.82rem;color:#6b7280;margin:0 0 12px;">Prüft jeden Slug via WP REST API — <strong>keine Duplikate</strong> möglich. Nur wirklich fehlende Seiten werden erstellt.</p>
+  <p style="font-size:.82rem;color:#6b7280;margin:0 0 12px;">Prüft jeden Slug — <strong>keine Duplikate</strong>. Slug wird nach dem Erstellen via PATCH erzwungen.</p>
   <?php if (!empty($sync_log)):
-    $n_c = count(array_filter($sync_log,fn($l)=>$l['status']==='created'));
-    $n_s = count(array_filter($sync_log,fn($l)=>$l['status']==='skip'));
-    $n_e = count(array_filter($sync_log,fn($l)=>$l['status']==='error'));
-  ?>
+    $n_c=count(array_filter($sync_log,fn($l)=>$l['status']==='created'));
+    $n_s=count(array_filter($sync_log,fn($l)=>$l['status']==='skip'));
+    $n_e=count(array_filter($sync_log,fn($l)=>$l['status']==='error')); ?>
   <div class="summary">
     <div class="sum-chip c">✅ <?= $n_c ?> erstellt</div>
     <div class="sum-chip s">⏭ <?= $n_s ?> vorhanden</div>
     <?php if($n_e): ?><div class="sum-chip e">❌ <?= $n_e ?> Fehler</div><?php endif; ?>
   </div>
-  <?php foreach ($sync_log as $l): ?>
-  <div class="log-item <?= htmlspecialchars($l['status'],ENT_QUOTES,'UTF-8') ?>">
+  <?php foreach($sync_log as $l): ?>
+  <div class="log-item <?= $l['status'] ?>">
     <span class="log-slug"><?= htmlspecialchars($l['slug'],ENT_QUOTES,'UTF-8') ?></span>
     <span class="log-msg"><?= htmlspecialchars($l['msg'],ENT_QUOTES,'UTF-8') ?>
       <?php if(!empty($l['url'])): ?><a href="<?= htmlspecialchars($l['url'],ENT_QUOTES,'UTF-8') ?>" target="_blank" style="color:#0071e3;">↗</a><?php endif; ?>
@@ -367,25 +345,19 @@ $has_auth = !empty($cfg['wp_user']) && !empty($cfg['wp_app_pass']);
   <form method="post">
     <?= wcr_csrf_field() ?>
     <input type="hidden" name="wcr_run_sync" value="1">
-    <button type="submit" class="btn-sync" <?= !$has_auth?'disabled':''; ?>>
-      🔄 Sync starten — <?= count($preview) ?> Seiten prüfen
-    </button>
+    <button type="submit" class="btn-sync" <?= !$has_auth?'disabled':'' ?>>🔄 Sync starten — <?= count($preview) ?> Seiten prüfen</button>
   </form>
 </div>
-
-<!-- Vorschau -->
 <div class="sync-card">
   <h2>📋 Geplante Seiten <small style="font-weight:400;color:#9ca3af;">(<?= count($preview) ?> total)</small></h2>
   <table class="preview-table">
     <thead><tr><th>Slug</th><th>Typ</th><th>Shortcode</th></tr></thead>
     <tbody>
-    <?php foreach ($preview as $p):
-      $grp = $p['group'];
-      $bc  = str_contains($grp,'Statisch')?'static':(str_contains($grp,'Liste')?'list':'highlight');
-    ?>
+    <?php foreach($preview as $p):
+      $bc=str_contains($p['group'],'Statisch')?'static':(str_contains($p['group'],'Liste')?'list':'highlight'); ?>
     <tr>
       <td><code style="font-size:.74rem;"><?= htmlspecialchars($p['slug'],ENT_QUOTES,'UTF-8') ?></code></td>
-      <td><span class="badge <?= $bc ?>"><?= htmlspecialchars($grp,ENT_QUOTES,'UTF-8') ?></span></td>
+      <td><span class="badge <?= $bc ?>"><?= htmlspecialchars($p['group'],ENT_QUOTES,'UTF-8') ?></span></td>
       <td><code style="font-size:.71rem;color:#6b7280;"><?= htmlspecialchars($p['sc'],ENT_QUOTES,'UTF-8') ?></code></td>
     </tr>
     <?php endforeach; ?>
