@@ -1,14 +1,12 @@
 <?php
 /**
- * ctrl/instagram.php — Instagram Feed Einstellungen v1
- * Ausgelagert aus ds-settings.php
- * Nur: view_ds
+ * ctrl/instagram.php — Instagram Feed Einstellungen
+ * v1.2: Verbindung + Debug in Settings-Popup
  */
 require_once __DIR__ . '/../inc/auth.php';
 require_once __DIR__ . '/../inc/db.php';
 wcr_require('view_ds');
 
-// Konstanten (falls noch nicht definiert — z.B. direkter Aufruf)
 if (!defined('DSC_WP_API_BASE')) define('DSC_WP_API_BASE', 'https://wcr-webpage.de/wp-json/wakecamp/v1');
 if (!defined('DSC_WP_SECRET'))   define('DSC_WP_SECRET',   'WCR_DS_2026');
 
@@ -135,10 +133,81 @@ $csrf = wcr_csrf_token();
 <body class="bo">
 <?php include __DIR__ . '/../inc/menu.php'; ?>
 
+<!-- ── Settings-Popup ──────────────────────────────────────────────────── -->
+<div id="ig-settings-overlay" onclick="if(event.target===this)closeIgSettings()">
+  <div id="ig-settings-popup">
+    <div id="ig-settings-header">
+      <h2>⚙️ Verbindung &amp; Debug</h2>
+      <button id="ig-settings-close" onclick="closeIgSettings()" title="Schließen">✕</button>
+    </div>
+    <div id="ig-settings-body">
+
+      <!-- Verbindung -->
+      <div class="ig-block">
+        <div class="ig-block-title">🔗 Verbindung</div>
+        <div class="ig-block-sub">Meta Graph API — Long-lived Access Token + Instagram Business Account ID</div>
+        <form method="POST">
+          <?= wcr_csrf_field() ?>
+          <input type="hidden" name="action" value="ig_save_connection">
+          <div class="ig-grid">
+            <div class="ig-row">
+              <label class="ig-label">Access Token</label>
+              <span class="ig-sublabel">Long-lived token. Leer lassen = bestehenden Token behalten.</span>
+              <input type="password" name="wcr_instagram_token" class="ig-input"
+                     value="" placeholder="<?= $ig_token ? 'Vorhandener Token bleibt gespeichert' : 'Neuen Token einfügen...' ?>" autocomplete="off">
+            </div>
+            <div class="ig-row">
+              <label class="ig-label">Instagram User ID</label>
+              <span class="ig-sublabel">Numerische ID des Business-Accounts</span>
+              <input type="text" name="wcr_instagram_user_id" class="ig-input"
+                     value="<?= ig_val2('wcr_instagram_user_id') ?>" placeholder="z.B. 17841400000000">
+            </div>
+          </div>
+          <div class="ig-footer" style="margin-top:0;padding-top:0;border-top:none;margin-bottom:16px;">
+            <button type="submit" class="btn-upload">🔐 Verbindung speichern</button>
+            <span class="ig-status <?= $token_class ?>"><?= htmlspecialchars($token_status) ?></span>
+          </div>
+          <div class="ig-debug">
+            <div class="ig-debug-card">
+              <div class="ig-debug-title">Verbindungsstatus</div>
+              <p class="ig-debug-text"><?= htmlspecialchars($token_status) ?></p>
+            </div>
+            <div class="ig-debug-card">
+              <div class="ig-debug-title">REST-Feed-Status</div>
+              <p class="ig-debug-text"><?= htmlspecialchars($ig_rest_info) ?></p>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <!-- Debug -->
+      <div class="ig-block">
+        <div class="ig-block-title">🧪 Debug</div>
+        <div class="ig-block-sub">Aktuelle Feed-Daten und Hinweise</div>
+        <div class="ig-debug">
+          <div class="ig-debug-card">
+            <div class="ig-debug-title">Feed-Vorschau</div>
+            <p class="ig-debug-text">Erste 2 Einträge aus <code>/wp-json/wakecamp/v1/instagram</code></p>
+            <pre class="ig-debug-code"><?= htmlspecialchars((string)$ig_rest_preview) ?></pre>
+          </div>
+          <div class="ig-debug-card">
+            <div class="ig-debug-title">Hinweise</div>
+            <p class="ig-debug-text">Der Token bleibt gespeichert bis du ihn oben bewusst neu setzt.</p>
+            <p class="ig-debug-text" style="margin-top:8px;">Wenn der Feed hier Daten zeigt, aber <code>/insta/</code> leer bleibt, liegt der Fehler im Frontend.</p>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /ig-settings-body -->
+  </div>
+</div>
+
+<!-- ── Header ──────────────────────────────────────────────────────────── -->
 <div class="header-controls">
   <h1>📸 Instagram Feed</h1>
-  <div class="header-right">
+  <div style="display:flex;align-items:center;gap:8px;">
     <a href="/be/ctrl/ds-settings.php" class="btn-secondary">← DS Controller</a>
+    <button class="settings-btn" onclick="openIgSettings()">⚙️ Verbindung &amp; Debug</button>
   </div>
 </div>
 
@@ -146,45 +215,7 @@ $csrf = wcr_csrf_token();
 <div class="status-banner <?= $msgType ?>"><?= htmlspecialchars($msg) ?></div>
 <?php endif; ?>
 
-<!-- VERBINDUNG -->
-<div class="ig-block">
-  <div class="ig-block-title">🔗 Verbindung</div>
-  <div class="ig-block-sub">Meta Graph API — Long-lived Access Token + Instagram Business Account ID</div>
-  <form method="POST">
-    <?= wcr_csrf_field() ?>
-    <input type="hidden" name="action" value="ig_save_connection">
-    <div class="ig-grid">
-      <div class="ig-row">
-        <label class="ig-label">Access Token</label>
-        <span class="ig-sublabel">Long-lived token. Leer lassen = bestehenden Token behalten.</span>
-        <input type="password" name="wcr_instagram_token" class="ig-input"
-               value="" placeholder="<?= $ig_token ? 'Vorhandener Token bleibt gespeichert' : 'Neuen Token einfügen...' ?>" autocomplete="off">
-      </div>
-      <div class="ig-row">
-        <label class="ig-label">Instagram User ID</label>
-        <span class="ig-sublabel">Numerische ID des Business-Accounts</span>
-        <input type="text" name="wcr_instagram_user_id" class="ig-input"
-               value="<?= ig_val2('wcr_instagram_user_id') ?>" placeholder="z.B. 17841400000000">
-      </div>
-    </div>
-    <div class="ig-footer" style="margin-top:0;padding-top:0;border-top:none;margin-bottom:16px;">
-      <button type="submit" class="btn-upload">🔐 Verbindung speichern</button>
-      <span class="ig-status <?= $token_class ?>"><?= htmlspecialchars($token_status) ?></span>
-    </div>
-    <div class="ig-debug">
-      <div class="ig-debug-card">
-        <div class="ig-debug-title">Verbindungsstatus</div>
-        <p class="ig-debug-text"><?= htmlspecialchars($token_status) ?></p>
-      </div>
-      <div class="ig-debug-card">
-        <div class="ig-debug-title">REST-Feed-Status</div>
-        <p class="ig-debug-text"><?= htmlspecialchars($ig_rest_info) ?></p>
-      </div>
-    </div>
-  </form>
-</div>
-
-<!-- EINSTELLUNGEN -->
+<!-- ── Feed-Einstellungen ──────────────────────────────────────────────── -->
 <form method="POST">
   <?= wcr_csrf_field() ?>
   <input type="hidden" name="action" value="ig_save_settings">
@@ -351,24 +382,6 @@ $csrf = wcr_csrf_token();
     </div>
   </div>
 
-  <!-- Debug -->
-  <div class="ig-block">
-    <div class="ig-block-title">🧪 Debug</div>
-    <div class="ig-block-sub">Aktuelle Feed-Daten und Hinweise</div>
-    <div class="ig-debug">
-      <div class="ig-debug-card">
-        <div class="ig-debug-title">Feed-Vorschau</div>
-        <p class="ig-debug-text">Erste 2 Einträge aus <code>/wp-json/wakecamp/v1/instagram</code></p>
-        <pre class="ig-debug-code"><?= htmlspecialchars((string)$ig_rest_preview) ?></pre>
-      </div>
-      <div class="ig-debug-card">
-        <div class="ig-debug-title">Hinweise</div>
-        <p class="ig-debug-text">Der Token bleibt gespeichert bis du ihn oben bewusst neu setzt.</p>
-        <p class="ig-debug-text" style="margin-top:8px;">Wenn der Feed hier Daten zeigt, aber <code>/insta/</code> leer bleibt, liegt der Fehler im Frontend.</p>
-      </div>
-    </div>
-  </div>
-
   <div style="display:flex;justify-content:flex-end;margin-bottom:30px;">
     <button type="submit" class="btn-upload" style="min-width:220px;padding:13px;font-size:15px;font-weight:700;">
       💾 Feed-Einstellungen speichern
@@ -377,6 +390,31 @@ $csrf = wcr_csrf_token();
 </form>
 
 <style>
+/* ── Settings-Popup ─────────────────────────────────────────────────────── */
+#ig-settings-overlay{
+  display:none;position:fixed;inset:0;z-index:9999;
+  background:rgba(0,0,0,.55);backdrop-filter:blur(3px);
+  align-items:center;justify-content:center;
+}
+#ig-settings-overlay.open{display:flex;}
+#ig-settings-popup{
+  background:#fff;border-radius:16px;overflow:hidden;
+  box-shadow:0 24px 80px rgba(0,0,0,.28);
+  width:min(880px,95vw);height:min(86vh,820px);
+  display:flex;flex-direction:column;
+}
+#ig-settings-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 18px;border-bottom:1px solid #e5e7eb;background:#f9fafb;flex-shrink:0;
+}
+#ig-settings-header h2{margin:0;font-size:.92rem;font-weight:700;display:flex;align-items:center;gap:7px;}
+#ig-settings-close{background:none;border:none;font-size:1.25rem;cursor:pointer;color:#6b7280;padding:4px 8px;border-radius:6px;line-height:1;}
+#ig-settings-close:hover{background:#f3f4f6;color:#111;}
+#ig-settings-body{flex:1;overflow-y:auto;padding:16px 20px 24px;}
+/* ── Settings-Button (gleicher Style wie ds-seiten.php) ─────────────────── */
+.settings-btn{display:inline-flex;align-items:center;gap:6px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px;color:#374151;font-size:.85rem;font-weight:600;padding:6px 14px;cursor:pointer;transition:background .15s;}
+.settings-btn:hover{background:#e5e7eb;}
+/* ── ig-Blocks ──────────────────────────────────────────────────────────── */
 .ig-block{background:var(--bg-card);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px 24px;margin-bottom:20px;}
 .ig-block-title{font-size:15px;font-weight:700;margin:0 0 3px;display:flex;align-items:center;gap:8px;}
 .ig-block-sub{font-size:12px;color:var(--text-muted);margin:0 0 18px;}
@@ -405,8 +443,22 @@ $csrf = wcr_csrf_token();
 .ig-debug-title{font-size:12px;font-weight:700;margin:0 0 4px;color:var(--text-main);}
 .ig-debug-text{font-size:12px;color:var(--text-muted);margin:0;}
 .ig-debug-code{margin:10px 0 0;padding:10px;border-radius:8px;background:#0d1117;color:#c9d1d9;font-size:11px;line-height:1.45;overflow:auto;max-height:180px;white-space:pre-wrap;word-break:break-word;}
+/* inside popup: kein box-shadow nötig */
+#ig-settings-body .ig-block{box-shadow:none;border:1px solid #e5e7eb;}
 @media(max-width:700px){.ig-grid{grid-template-columns:1fr;}.ig-debug{grid-template-columns:1fr;}}
 </style>
+
+<script>
+function openIgSettings(){
+  var ov=document.getElementById('ig-settings-overlay');
+  if(ov){ov.classList.add('open');document.body.style.overflow='hidden';}
+}
+function closeIgSettings(){
+  var ov=document.getElementById('ig-settings-overlay');
+  if(ov){ov.classList.remove('open');document.body.style.overflow='';}
+}
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeIgSettings();});
+</script>
 
 <?php include __DIR__ . '/../inc/debug.php'; ?>
 </body></html>
